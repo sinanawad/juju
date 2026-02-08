@@ -108,10 +108,11 @@ Each user story is independently implementable and testable. Stories are ordered
 14. Replace hardcoded `caas.DeploymentStateful` in `caasfirewaller/appfirewaller.go:81`
 15. Replace hardcoded `caas.DeploymentStateful` in `domain/application/service/provider.go:442,538`
 16. Add warning when `deployment-type=stateless` but charm has storage (FR-012)
+17. Add `DeploymentTypeImmutable` error and enforce immutability in `SetApplicationConstraints` (FR-006)
 
-**Test**: Deploy a charm with no storage → verify it runs as Deployment. Deploy with storage → verify StatefulSet. Deploy with explicit constraint → verify override works. Verify existing charms continue as StatefulSet.
+**Test**: Deploy a charm with no storage → verify it runs as Deployment. Deploy with storage → verify StatefulSet. Deploy with explicit constraint → verify override works. Verify existing charms continue as StatefulSet. Attempt to change deployment-type on running app → verify error.
 
-**Validates**: FR-001, FR-002, FR-003, FR-004, FR-008, FR-009, FR-010, FR-011, FR-012 | SC-001, SC-003, SC-005, SC-007
+**Validates**: FR-001, FR-002, FR-003, FR-004, FR-006, FR-008, FR-009, FR-010, FR-011, FR-012 | SC-001, SC-003, SC-005, SC-007
 
 ---
 
@@ -128,7 +129,7 @@ Each user story is independently implementable and testable. Stories are ordered
 
 **Test**: Deploy with `deployment-type=daemon` → verify DaemonSet created. Try `juju scale-application` → verify clear error. Add node to cluster → verify new pod appears.
 
-**Validates**: FR-005, FR-006 | SC-002, SC-006
+**Validates**: FR-005 | SC-002, SC-006
 
 ---
 

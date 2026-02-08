@@ -129,6 +129,12 @@ As an operator managing multiple applications across a Kubernetes model, I want 
 - **Workload Type**: The kind of Kubernetes workload controller used for an application. One of: stateless (Deployment), stateful (StatefulSet), or daemon (DaemonSet). Determined at deploy time either automatically or by explicit operator constraint, and immutable for the lifetime of the application.
 - **Deployment-Type Constraint**: A new constraint field that allows operators to explicitly select the workload type. Follows existing constraint semantics (can be set at model or application level, application-level overrides model-level).
 
+### Terminology
+
+- **Workload type** is the user-facing term used in documentation, error messages, and status output (e.g., "Deployment", "StatefulSet", "DaemonSet").
+- **Deployment type** is the implementation-level term used in code, constraint names (`deployment-type`), and database columns (`deployment_type_id`).
+- Both terms refer to the same concept. Use "workload type" when addressing operators; use "deployment type" in code and technical artifacts.
+
 ### Assumptions
 
 - The underlying Kubernetes provider already supports creating and managing Deployment, StatefulSet, and DaemonSet resources. This feature is about wiring the selection mechanism through the system, not implementing new Kubernetes resource management.
