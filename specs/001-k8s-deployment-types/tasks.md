@@ -46,7 +46,7 @@
 
 **Independent Test**: Deploy a charm with no storage → verify Deployment. Deploy with storage → verify StatefulSet. Deploy with explicit constraint → verify override works. Deploy existing charm → verify StatefulSet preserved.
 
-**Validates**: FR-001, FR-002, FR-003, FR-004, FR-008, FR-009, FR-010, FR-011, FR-012 | SC-001, SC-003, SC-005, SC-007
+**Validates**: FR-001, FR-002, FR-003, FR-004, FR-006, FR-008, FR-009, FR-010, FR-011, FR-012 | SC-001, SC-003, SC-005, SC-007
 
 ### Wire Types & API Versioning
 
@@ -73,9 +73,14 @@
 - [ ] T016 [P] [US1+2+4] Replace hardcoded `caas.DeploymentStateful` at line 442 in `domain/application/service/provider.go` with deployment type read from application state
 - [ ] T017 [P] [US1+2+4] Replace hardcoded `caas.DeploymentStateful` at line 538 in `domain/application/service/provider.go` with deployment type read from application state
 
+### Immutability Enforcement (FR-006)
+
+- [ ] T018 [US1+2+4] Add `DeploymentTypeImmutable` error constant to `domain/application/errors/errors.go` with message: "deployment type cannot be changed for a running application; redeploy to use a different workload type"
+- [ ] T019 [US1+2+4] Add deployment type immutability check in `domain/application/service/provider.go` — when `SetApplicationConstraints` is called, if the new constraints include `deployment-type` and differ from the persisted value, return `DeploymentTypeImmutable` error
+
 ### Warning for Storage Mismatch (FR-012)
 
-- [ ] T018 [US1+2+4] Add warning log when `deployment-type=stateless` but charm declares persistent storage, emitted during deploy in the worker or domain service layer (exact location: near `DetermineDeploymentType` usage in `internal/worker/caasapplicationprovisioner/application.go`)
+- [ ] T020 [US1+2+4] Add warning log when `deployment-type=stateless` but charm declares persistent storage, emitted during deploy in the worker or domain service layer (exact location: near `DetermineDeploymentType` usage in `internal/worker/caasapplicationprovisioner/application.go`)
 
 **Checkpoint**: At this point, deploying charms with any workload type works end-to-end. Existing charms continue as StatefulSet. Constraint validation, inference, persistence, and provisioning all functional.
 
@@ -87,14 +92,14 @@
 
 **Independent Test**: Deploy with `deployment-type=daemon` → verify DaemonSet created. Try `juju scale-application` → verify clear error. Add node to cluster → verify new pod appears.
 
-**Validates**: FR-005, FR-006 | SC-002, SC-006
+**Validates**: FR-005 | SC-002, SC-006
 
 **Depends on**: Phase 3 (deployment type must be persistable and queryable)
 
 ### Implementation
 
-- [ ] T019 [P] [US3] Add `DaemonSetScaleNotSupported` error constant to `domain/application/errors/errors.go` with message: "scaling is not supported for DaemonSet applications; scale is determined by the number of cluster nodes"
-- [ ] T020 [US3] Add deployment type check in scale validation in `domain/application/service/application.go` — before processing scale change, query application deployment type; if `daemon`, return `DaemonSetScaleNotSupported` error
+- [ ] T021 [P] [US3] Add `DaemonSetScaleNotSupported` error constant to `domain/application/errors/errors.go` with message: "scaling is not supported for DaemonSet applications; scale is determined by the number of cluster nodes"
+- [ ] T022 [US3] Add deployment type check in scale validation in `domain/application/service/application.go` — before processing scale change, query application deployment type; if `daemon`, return `DaemonSetScaleNotSupported` error
 
 **Checkpoint**: DaemonSet applications correctly reject manual scaling. Combined with Phase 3, the full DaemonSet workflow (deploy + scale blocking) is testable.
 
@@ -112,19 +117,19 @@
 
 ### Domain & Wire Types
 
-- [ ] T021 [P] [US5] Add `DeploymentType *string` field to `Application` struct in `domain/status/service/types.go`
-- [ ] T022 [P] [US5] Add `DeploymentType string` field to `ApplicationStatus` struct in `rpc/params/status.go` with JSON tag `"deployment-type,omitempty"`
-- [ ] T023 [P] [US5] Add `DeploymentType string` field to `applicationStatus` struct in `cmd/juju/status/formatted.go`
+- [ ] T023 [P] [US5] Add `DeploymentType *string` field to `Application` struct in `domain/status/service/types.go`
+- [ ] T024 [P] [US5] Add `DeploymentType string` field to `ApplicationStatus` struct in `rpc/params/status.go` with JSON tag `"deployment-type,omitempty"`
+- [ ] T025 [P] [US5] Add `DeploymentType string` field to `applicationStatus` struct in `cmd/juju/status/formatted.go`
 
 ### Status Assembly (API Server)
 
-- [ ] T024 [US5] Populate `DeploymentType` in CAAS application status assembly in `apiserver/facades/client/client/status.go` (within the CAAS-specific block around line 940-956) by reading from the domain status Application struct
+- [ ] T026 [US5] Populate `DeploymentType` in CAAS application status assembly in `apiserver/facades/client/client/status.go` (within the CAAS-specific block around line 940-956) by reading from the domain status Application struct
 
 ### Status Display (CLI)
 
-- [ ] T025 [US5] Map `DeploymentType` from `params.ApplicationStatus` to `applicationStatus` in `cmd/juju/status/formatter.go`
-- [ ] T026 [US5] Add "Type" column header to CAAS application table headers at `cmd/juju/status/output_tabular.go:142` (after "Exposed", before "Message")
-- [ ] T027 [US5] Print deployment type value (display names: "Deployment", "StatefulSet", "DaemonSet") in the CAAS application table rendering loop in `cmd/juju/status/output_tabular.go`
+- [ ] T027 [US5] Map `DeploymentType` from `params.ApplicationStatus` to `applicationStatus` in `cmd/juju/status/formatter.go`
+- [ ] T028 [US5] Add "Type" column header to CAAS application table headers at `cmd/juju/status/output_tabular.go:142` (after "Exposed", before "Message")
+- [ ] T029 [US5] Print deployment type value (display names: "Deployment", "StatefulSet", "DaemonSet") in the CAAS application table rendering loop in `cmd/juju/status/output_tabular.go`
 
 **Checkpoint**: `juju status` shows workload type for all CAAS applications. IAAS models unaffected.
 
@@ -134,12 +139,12 @@
 
 **Purpose**: Validation, cleanup, and verification across all stories.
 
-- [ ] T028 Run `go test ./core/constraints/...` to verify constraint parsing, validation, and serialization
-- [ ] T029 Run `go test ./domain/application/...` to verify persistence, retrieval, and scale validation
-- [ ] T030 Run `go test ./internal/worker/caasapplicationprovisioner/...` to verify deployment type determination and dynamic provisioning
-- [ ] T031 Run `go test ./apiserver/facades/controller/caasapplicationprovisioner/...` to verify facade v2 and provisioning info population
-- [ ] T032 Run `go test ./cmd/juju/status/...` to verify status display with Type column
-- [ ] T033 Run quickstart.md validation: build with `make go-build` and verify no compilation errors
+- [ ] T030 Run `go test ./core/constraints/...` to verify constraint parsing, validation, and serialization
+- [ ] T031 Run `go test ./domain/application/...` to verify persistence, retrieval, scale validation, and immutability enforcement
+- [ ] T032 Run `go test ./internal/worker/caasapplicationprovisioner/...` to verify deployment type determination and dynamic provisioning
+- [ ] T033 Run `go test ./apiserver/facades/controller/caasapplicationprovisioner/...` to verify facade v2 and provisioning info population
+- [ ] T034 Run `go test ./cmd/juju/status/...` to verify status display with Type column
+- [ ] T035 Run quickstart.md validation: build with `make go-build` and verify no compilation errors
 
 ---
 
@@ -195,8 +200,8 @@ T017 (provider.go:538) ─┘── parallel (same file but independent changes)
 
 **Phase 4+5** (independent stories):
 ```
-Phase 4 (US3: T019, T020) ─┐
-Phase 5 (US5: T021-T027)  ─┘── parallel (different layers, no dependencies)
+Phase 4 (US3: T021, T022) ─┐
+Phase 5 (US5: T023-T029)  ─┘── parallel (different layers, no dependencies)
 ```
 
 ---
@@ -223,9 +228,18 @@ Phase 5 (US5: T021-T027)  ─┘── parallel (different layers, no dependenci
 
 ## Notes
 
+- FR-009 (silently ignore deployment-type on IAAS) requires no new code — the existing constraint
+  system already ignores unsupported constraints for IAAS models. Covered by T003 validation logic.
+- FR-011 (default existing apps to StatefulSet on upgrade) requires no new code beyond T001 —
+  the `DEFAULT 0` on the `deployment_type_id` column ensures existing rows get `stateful`.
+- Edge case 4 (model-level deployment-type constraint) requires no new code — the existing
+  constraint system already supports model-level defaults with per-application overrides.
 - [P] tasks = different files, no dependencies on incomplete tasks
 - [Story] label maps task to specific user story for traceability
 - Story 1+2+4 are grouped because they are deeply intertwined (constraint → persistence → provisioning → backward compat)
 - Story 3 and Story 5 are fully independent of each other and can be implemented in either order
 - No new packages are created — all changes fit within existing directory structure
 - Provider layer (`internal/provider/kubernetes/application/`) requires NO changes — it already supports all 3 types
+- Edge case 2 (DaemonSet + non-shared storage access mode): Deferred — the provider layer
+  already uses standalone PVCs for DaemonSets (`handlePVCForStatelessResource`), avoiding the
+  identity-dependent VolumeClaimTemplate pattern. No additional validation needed for MVP.
