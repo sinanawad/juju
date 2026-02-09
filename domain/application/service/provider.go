@@ -510,22 +510,71 @@ func (s *ProviderService) RegisterCAASUnit(
 		PasswordHash: password.AgentPasswordHash(pass),
 	}
 
-	// We don't support anything other that statefulsets.
-	// So the pod name contains the unit number.
 	appName := params.ApplicationName
-	splitPodName := strings.Split(params.ProviderID, "-")
-	ord, err := strconv.Atoi(splitPodName[len(splitPodName)-1])
+
+	// Query the deployment type to determine unit naming strategy.
+	deploymentTypeStr, err := s.st.GetApplicationDeploymentType(ctx, appName)
 	if err != nil {
-		return "", "", errors.Errorf("parsing unit number from pod name %q: %w", params.ProviderID, err)
+		return "", "", errors.Errorf("getting deployment type for application %q: %w", appName, err)
 	}
-	unitName, err := coreunit.NewNameFromParts(appName, ord)
-	if err != nil {
-		return "", "", errors.Capture(err)
+	s.logger.Debugf(ctx, "RegisterCAASUnit: app=%q providerID=%q deploymentType=%q", appName, params.ProviderID, deploymentTypeStr)
+
+	var (
+		unitName coreunit.Name
+		ord      int
+	)
+
+	if deploymentTypeStr == "stateful" {
+		// StatefulSet: pod names follow <app>-<ordinal> convention.
+		splitPodName := strings.Split(params.ProviderID, "-")
+		ord, err = strconv.Atoi(splitPodName[len(splitPodName)-1])
+		if err != nil {
+			return "", "", errors.Errorf("parsing unit number from pod name %q: %w", params.ProviderID, err)
+		}
+		unitName, err = coreunit.NewNameFromParts(appName, ord)
+		if err != nil {
+			return "", "", errors.Capture(err)
+		}
+	} else {
+		// Deployment/DaemonSet: pod names have random suffixes, so we
+		// cannot derive the unit ordinal from the pod name. Instead:
+		// 1. Check if a unit already exists with this provider ID.
+		// 2. Check if there's an unassigned unit (created at deploy
+		//    time, waiting for a pod to claim it).
+		// 3. Only if neither exists, assign the next available ordinal.
+		existingName, found, err := s.st.GetCAASUnitNameByProviderID(ctx, appUUID, params.ProviderID)
+		if err != nil {
+			return "", "", errors.Errorf("looking up unit by provider ID %q: %w", params.ProviderID, err)
+		}
+		if found {
+			unitName = existingName
+			ord = unitName.Number()
+		} else {
+			// Look for a unit that was pre-created but has no pod
+			// assigned yet (no k8s_pod row).
+			unassigned, foundUnassigned, err := s.st.GetUnassignedCAASUnitName(ctx, appUUID)
+			if err != nil {
+				return "", "", errors.Errorf("looking up unassigned unit for %q: %w", appName, err)
+			}
+			if foundUnassigned {
+				unitName = unassigned
+				ord = unitName.Number()
+			} else {
+				ord, err = s.st.GetNextCAASUnitOrdinal(ctx, appName)
+				if err != nil {
+					return "", "", errors.Errorf("getting next unit ordinal for %q: %w", appName, err)
+				}
+				unitName, err = coreunit.NewNameFromParts(appName, ord)
+				if err != nil {
+					return "", "", errors.Capture(err)
+				}
+			}
+		}
 	}
 
 	registerArgs.UnitName = unitName
 	registerArgs.OrderedId = ord
-	registerArgs.OrderedScale = true
+	registerArgs.OrderedScale = deploymentTypeStr == "stateful"
 
 	isRegistered, unitUUID, unitNetNodeUUID, err :=
 		s.st.GetCAASUnitRegistered(ctx, unitName)
@@ -554,10 +603,6 @@ func (s *ProviderService) RegisterCAASUnit(
 	caasApplicationProvider, err := s.caasApplicationProvider(ctx)
 	if err != nil {
 		return "", "", errors.Errorf("registering k8s units for application %q: %w", appName, err)
-	}
-	deploymentTypeStr, err := s.st.GetApplicationDeploymentType(ctx, appName)
-	if err != nil {
-		return "", "", errors.Errorf("getting deployment type for application %q: %w", appName, err)
 	}
 	caasApp := caasApplicationProvider.Application(appName, caas.DeploymentType(deploymentTypeStr))
 	pods, err := caasApp.Units()

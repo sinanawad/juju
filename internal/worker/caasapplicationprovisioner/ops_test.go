@@ -421,8 +421,7 @@ func (s *OpsSuite) TestEnsureScaleAlive(c *tc.C) {
 		facade.EXPECT().DestroyUnits(gomock.Any(), unitsToDestroy).Return(nil),
 	)
 
-	err := caasapplicationprovisioner.AppOps.EnsureScale(c.Context(), "test", appId, app,
-		life.Alive, facade, applicationService, s.logger)
+	err := caasapplicationprovisioner.AppOps.EnsureScale(c.Context(), "test", appId, app, life.Alive, true, facade, applicationService, s.logger)
 	c.Assert(err, tc.ErrorIsNil)
 }
 
@@ -453,8 +452,7 @@ func (s *OpsSuite) TestEnsureScaleAliveRetry(c *tc.C) {
 		facade.EXPECT().DestroyUnits(gomock.Any(), unitsToDestroy).Return(nil),
 	)
 
-	err := caasapplicationprovisioner.AppOps.EnsureScale(c.Context(), "test", appId, app,
-		life.Alive, facade, applicationService, s.logger)
+	err := caasapplicationprovisioner.AppOps.EnsureScale(c.Context(), "test", appId, app, life.Alive, true, facade, applicationService, s.logger)
 	c.Assert(err, tc.ErrorMatches, `try again`)
 }
 
@@ -477,8 +475,7 @@ func (s *OpsSuite) TestEnsureScaleDyingDead(c *tc.C) {
 		applicationService.EXPECT().GetAllUnitLifeForApplication(gomock.Any(), appId).Return(units, nil),
 	)
 
-	err := caasapplicationprovisioner.AppOps.EnsureScale(c.Context(), "test", appId, app,
-		life.Dead, facade, applicationService, s.logger)
+	err := caasapplicationprovisioner.AppOps.EnsureScale(c.Context(), "test", appId, app, life.Dead, true, facade, applicationService, s.logger)
 	c.Assert(err, tc.ErrorIsNil)
 }
 
@@ -525,8 +522,7 @@ func (s *OpsSuite) TestEnsureScaleWithAttachStorage(c *tc.C) {
 		applicationService.EXPECT().SetApplicationScalingState(gomock.Any(), "test", 0, false).Return(nil),
 	)
 
-	err := caasapplicationprovisioner.AppOps.EnsureScale(c.Context(), "test", appUUID, app,
-		life.Alive, facade, applicationService, s.logger)
+	err := caasapplicationprovisioner.AppOps.EnsureScale(c.Context(), "test", appUUID, app, life.Alive, true, facade, applicationService, s.logger)
 	c.Assert(err, tc.ErrorIsNil)
 }
 
@@ -568,8 +564,7 @@ func (s *OpsSuite) TestEnsureScaleWithAttachStorageEnsurePVCsFails(c *tc.C) {
 			Return(errors.New("PVC creation failed")),
 	)
 
-	err := caasapplicationprovisioner.AppOps.EnsureScale(c.Context(), "test", appUUID, app,
-		life.Alive, facade, applicationService, s.logger)
+	err := caasapplicationprovisioner.AppOps.EnsureScale(c.Context(), "test", appUUID, app, life.Alive, true, facade, applicationService, s.logger)
 	c.Assert(err, tc.ErrorMatches, "PVC creation failed")
 }
 

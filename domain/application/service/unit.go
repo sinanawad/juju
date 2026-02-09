@@ -45,6 +45,23 @@ type UnitState interface {
 		context.Context, coreunit.Name,
 	) (bool, coreunit.UUID, domainnetwork.NetNodeUUID, error)
 
+	// GetCAASUnitNameByProviderID returns the unit name for the given cloud
+	// container provider ID within an application. If no unit is found with
+	// the given provider ID, an empty string is returned along with false.
+	GetCAASUnitNameByProviderID(
+		context.Context, coreapplication.UUID, string,
+	) (coreunit.Name, bool, error)
+
+	// GetUnassignedCAASUnitName returns the name of a unit for the given
+	// application that does not yet have a cloud container (k8s_pod) assigned
+	// to it. If no unassigned unit exists, an empty name and false are returned.
+	GetUnassignedCAASUnitName(context.Context, coreapplication.UUID) (coreunit.Name, bool, error)
+
+	// GetNextCAASUnitOrdinal returns the next available unit ordinal for the
+	// given application by finding the maximum existing ordinal and adding 1.
+	// If no units exist, 0 is returned.
+	GetNextCAASUnitOrdinal(context.Context, string) (int, error)
+
 	// InsertMigratingIAASUnits inserts the fully formed units for the specified
 	// IAAS application. This is only used when inserting units during model
 	// migration. If the application is not found, an error satisfying

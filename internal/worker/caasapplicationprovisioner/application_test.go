@@ -212,17 +212,12 @@ func (s *ApplicationWorkerSuite) TestWorker(c *tc.C) {
 		}),
 
 		// scaleChan fired
-		ops.EXPECT().EnsureScale(x, "test", s.appUUID, app, life.Alive, x, x, x).
-			Return(errors.NotFound),
-		ops.EXPECT().EnsureScale(x, "test", s.appUUID, app, life.Alive, x, x, x).
-			Return(errors.ConstError("try again")),
-		ops.EXPECT().EnsureScale(x, "test", s.appUUID, app, life.Alive, x, x, x).
-			DoAndReturn(func(ctx context.Context, s string, i application.UUID,
-				a caas.Application, v life.Value, cf CAASProvisionerFacade,
-				as ApplicationService, l logger.Logger) error {
-				settingsChan <- struct{}{}
-				return nil
-			}),
+		ops.EXPECT().EnsureScale(x, "test", s.appUUID, app, life.Alive, x, x, x, x).Return(errors.NotFound),
+		ops.EXPECT().EnsureScale(x, "test", s.appUUID, app, life.Alive, x, x, x, x).Return(errors.ConstError("try again")),
+		ops.EXPECT().EnsureScale(x, "test", s.appUUID, app, life.Alive, x, x, x, x).DoAndReturn(func(ctx context.Context, s string, i application.UUID, a caas.Application, v life.Value, orderedScale bool, cf CAASProvisionerFacade, as ApplicationService, l logger.Logger) error {
+			settingsChan <- struct{}{}
+			return nil
+		}),
 
 		// trustChan fired
 		ops.EXPECT().EnsureTrust(x, "test", app, x, x).Return(errors.NotFound),
@@ -431,17 +426,12 @@ func (s *ApplicationWorkerSuite) TestNotProvisionedRetry(c *tc.C) {
 		}),
 
 		// scaleChan fired
-		ops.EXPECT().EnsureScale(x, "test", s.appUUID, app, life.Alive, x, x, x).
-			Return(errors.NotFound),
-		ops.EXPECT().EnsureScale(x, "test", s.appUUID, app, life.Alive, x, x, x).
-			Return(errors.ConstError("try again")),
-		ops.EXPECT().EnsureScale(x, "test", s.appUUID, app, life.Alive, x, x, x).
-			DoAndReturn(func(ctx context.Context, s string,
-				i application.UUID, a caas.Application, v life.Value, cf CAASProvisionerFacade,
-				as ApplicationService, l logger.Logger) error {
-				settingsChan <- struct{}{}
-				return nil
-			}),
+		ops.EXPECT().EnsureScale(x, "test", s.appUUID, app, life.Alive, x, x, x, x).Return(errors.NotFound),
+		ops.EXPECT().EnsureScale(x, "test", s.appUUID, app, life.Alive, x, x, x, x).Return(errors.ConstError("try again")),
+		ops.EXPECT().EnsureScale(x, "test", s.appUUID, app, life.Alive, x, x, x, x).DoAndReturn(func(ctx context.Context, s string, i application.UUID, a caas.Application, v life.Value, orderedScale bool, cf CAASProvisionerFacade, as ApplicationService, l logger.Logger) error {
+			settingsChan <- struct{}{}
+			return nil
+		}),
 
 		// settingsChan fired
 		ops.EXPECT().EnsureTrust(x, "test", app, applicationService, s.logger).Return(errors.NotFound),

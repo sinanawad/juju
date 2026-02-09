@@ -7,6 +7,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/canonical/sqlair"
@@ -135,6 +136,156 @@ func (st *State) GetCAASUnitRegistered(
 		coreunit.UUID(dbVal.UUID),
 		domainnetwork.NetNodeUUID(dbVal.NetNodeUUID),
 		nil
+}
+
+// GetCAASUnitNameByProviderID returns the unit name for the given cloud
+// container provider ID within an application. If no unit is found with the
+// given provider ID, an empty string is returned along with false.
+func (st *State) GetCAASUnitNameByProviderID(
+	ctx context.Context,
+	appUUID coreapplication.UUID,
+	providerID string,
+) (coreunit.Name, bool, error) {
+	db, err := st.DB(ctx)
+	if err != nil {
+		return "", false, errors.Capture(err)
+	}
+
+	input := unitNameCloudContainer{ProviderID: providerID}
+	appInput := entityUUID{UUID: appUUID.String()}
+	var result unitName
+
+	q := `
+SELECT u.name AS &unitName.name
+FROM unit u
+JOIN k8s_pod kp ON u.uuid = kp.unit_uuid
+WHERE u.application_uuid = $entityUUID.uuid
+AND kp.provider_id = $unitNameCloudContainer.provider_id
+`
+	stmt, err := st.Prepare(q, input, appInput, result)
+	if err != nil {
+		return "", false, errors.Capture(err)
+	}
+
+	var found bool
+	err = db.Txn(ctx, func(ctx context.Context, tx *sqlair.TX) error {
+		err := tx.Query(ctx, stmt, input, appInput).Get(&result)
+		if errors.Is(err, sqlair.ErrNoRows) {
+			return nil
+		} else if err == nil {
+			found = true
+		}
+		return err
+	})
+	if err != nil {
+		return "", false, errors.Capture(err)
+	}
+	if !found {
+		return "", false, nil
+	}
+	return coreunit.Name(result.Name), true, nil
+}
+
+// GetUnassignedCAASUnitName returns the name of a unit for the given application
+// that does not yet have a cloud container (k8s_pod) assigned to it. This is
+// used by Deployment/DaemonSet workloads where pods cannot be mapped to units
+// by name. If no unassigned unit exists, an empty name and false are returned.
+func (st *State) GetUnassignedCAASUnitName(
+	ctx context.Context,
+	appUUID coreapplication.UUID,
+) (coreunit.Name, bool, error) {
+	db, err := st.DB(ctx)
+	if err != nil {
+		return "", false, errors.Capture(err)
+	}
+
+	appInput := entityUUID{UUID: appUUID.String()}
+	var result unitName
+
+	q := `
+SELECT u.name AS &unitName.name
+FROM unit u
+LEFT JOIN k8s_pod kp ON u.uuid = kp.unit_uuid
+WHERE u.application_uuid = $entityUUID.uuid
+AND kp.unit_uuid IS NULL
+AND u.life_id = 0
+ORDER BY u.name ASC
+LIMIT 1
+`
+	stmt, err := st.Prepare(q, appInput, result)
+	if err != nil {
+		return "", false, errors.Capture(err)
+	}
+
+	var found bool
+	err = db.Txn(ctx, func(ctx context.Context, tx *sqlair.TX) error {
+		err := tx.Query(ctx, stmt, appInput).Get(&result)
+		if errors.Is(err, sqlair.ErrNoRows) {
+			return nil
+		} else if err == nil {
+			found = true
+		}
+		return err
+	})
+	if err != nil {
+		return "", false, errors.Capture(err)
+	}
+	if !found {
+		return "", false, nil
+	}
+	return coreunit.Name(result.Name), true, nil
+}
+
+// GetNextCAASUnitOrdinal returns the next available unit ordinal for the given
+// application by finding the maximum existing ordinal and adding 1. If no units
+// exist, 0 is returned.
+func (st *State) GetNextCAASUnitOrdinal(
+	ctx context.Context,
+	appName string,
+) (int, error) {
+	db, err := st.DB(ctx)
+	if err != nil {
+		return 0, errors.Capture(err)
+	}
+
+	input := entityName{Name: appName}
+	var names []unitName
+
+	q := `
+SELECT u.name AS &unitName.name
+FROM unit u
+JOIN application a ON u.application_uuid = a.uuid
+WHERE a.name = $entityName.name
+`
+	stmt, err := st.Prepare(q, input, unitName{})
+	if err != nil {
+		return 0, errors.Capture(err)
+	}
+
+	err = db.Txn(ctx, func(ctx context.Context, tx *sqlair.TX) error {
+		return tx.Query(ctx, stmt, input).GetAll(&names)
+	})
+	if errors.Is(err, sqlair.ErrNoRows) || len(names) == 0 {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, errors.Capture(err)
+	}
+
+	// Unit names are "<appName>/<ordinal>". Find the maximum ordinal.
+	prefix := appName + "/"
+	maxOrd := -1
+	for _, n := range names {
+		ordStr := strings.TrimPrefix(n.Name, prefix)
+		ord, err := strconv.Atoi(ordStr)
+		if err != nil {
+			continue
+		}
+		if ord > maxOrd {
+			maxOrd = ord
+		}
+	}
+	return maxOrd + 1, nil
 }
 
 // InitialWatchStatementUnitAddressesHash returns the initial namespace query
@@ -841,13 +992,28 @@ func (st *State) RegisterCAASUnit(ctx context.Context, appName string, arg appli
 				return errors.Errorf("getting application scale state for app %q: %w", appUUID, err)
 			}
 
-			if appScale.Scaling {
-				// While scaling, we use the scaling target.
-				if arg.OrderedId >= appScale.ScaleTarget {
+			if arg.OrderedScale {
+				// StatefulSet: strict scaling gate — only allow
+				// registration while actively scaling and within target.
+				if appScale.Scaling {
+					if arg.OrderedId >= appScale.ScaleTarget {
+						return errors.Errorf("unrequired unit %s is not assigned", arg.UnitName).Add(applicationerrors.UnitNotAssigned)
+					}
+				} else {
 					return errors.Errorf("unrequired unit %s is not assigned", arg.UnitName).Add(applicationerrors.UnitNotAssigned)
 				}
 			} else {
-				return errors.Errorf("unrequired unit %s is not assigned", arg.UnitName).Add(applicationerrors.UnitNotAssigned)
+				// Deployment/DaemonSet: allow registration as long
+				// as the number of alive units is below the desired
+				// scale. Ordinals are not meaningful for ordering in
+				// non-StatefulSet workloads.
+				aliveCount, err := st.countAliveUnitsForApplication(ctx, tx, appUUID)
+				if err != nil {
+					return errors.Errorf("counting alive units for app %q: %w", appUUID, err)
+				}
+				if aliveCount >= appScale.Scale {
+					return errors.Errorf("unrequired unit %s is not assigned", arg.UnitName).Add(applicationerrors.UnitNotAssigned)
+				}
 			}
 
 			uuid, err := st.insertCAASUnitWithName(

@@ -502,6 +502,28 @@ WHERE name = $unitNameLife.name
 	return life.Life(unit.LifeID), nil
 }
 
+// countAliveUnitsForApplication counts the number of alive units for the
+// given application UUID.
+func (st *State) countAliveUnitsForApplication(ctx context.Context, tx *sqlair.TX, appUUID string) (int, error) {
+	app := entityUUID{UUID: appUUID}
+	q := `
+SELECT COUNT(*) AS &countResult.count
+FROM unit
+WHERE application_uuid = $entityUUID.uuid
+AND life_id = 0
+`
+	stmt, err := st.Prepare(q, app, countResult{})
+	if err != nil {
+		return 0, errors.Capture(err)
+	}
+	var result countResult
+	err = tx.Query(ctx, stmt, app).Get(&result)
+	if err != nil {
+		return 0, errors.Errorf("counting alive units for app %q: %w", appUUID, err)
+	}
+	return result.Count, nil
+}
+
 // GetApplicationScaleState looks up the scale state of the specified application, returning an error
 // satisfying [applicationerrors.ApplicationNotFound] if the application is not found.
 func (st *State) GetApplicationScaleState(ctx context.Context, appUUID coreapplication.UUID) (application.ScaleState, error) {
