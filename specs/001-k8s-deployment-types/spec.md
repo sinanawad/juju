@@ -108,6 +108,42 @@ As an operator managing multiple applications across a Kubernetes model, I want 
 - What happens during a controller upgrade when existing applications have no workload type recorded? The system should default existing applications to StatefulSet to preserve current behavior.
 - What happens when a CAAS model is migrated between controllers? The deployment type must survive the migration. For inferred types (no explicit constraint), the import side must re-infer from charm metadata. For explicit constraints (including `daemon`), the serialization layer (`description/v11`) must carry the `deployment-type` field through the export/import round-trip.
 
+### Known Bugs (Pre-existing, Not Introduced by This Feature)
+
+#### BUG: `remove-application` Race Leaves Orphaned K8s Resources
+
+**Severity**: High — affects ALL CAAS workload types (StatefulSet, Deployment, DaemonSet).
+
+**Summary**: When `juju remove-application` is called, the removal service and the caasapplicationprovisioner worker race against each other. The removal service deletes the application's DB record before the worker reaches the `appDead()` path where `app.Delete()` cleans up Kubernetes resources. This leaves orphaned K8s Deployments, Services, Roles, RoleBindings, Secrets, and ServiceAccounts in the model namespace.
+
+**Reproduction sequence** (observed with nginx Deployment on `001-k8s-deployment-types` branch):
+```
+1. juju remove-application nginx
+2. Removal service: "cannot delete, still has 1 unit" → waits
+3. appWorker: detects Dying → calls ensureScale(0) → units removed
+4. Removal service: sees 0 units → deletes DB record
+5. appWorker: ensureScale() tries to update scaling state → "application not found" → CRASH
+6. appWorker: restarts, finds app gone → exits cleanly
+7. appDead() / app.Delete() was NEVER called → K8s resources orphaned
+```
+
+**Root cause**: The lifecycle assumes Dying → Dead → DB removal, with K8s cleanup in the Dead phase. But the removal service deletes the DB record as soon as units reach 0, which races with the worker's Dying phase. The existing TODO in `ops.go:443-447` acknowledges this:
+```go
+// TODO(k8s): re-implement this to prevent a dead app from going away through
+// creating a new domain concept that holds the application until this worker
+// has destroyed all the k8s resources.
+```
+
+**Secondary issue**: The `Delete()` method in `internal/provider/kubernetes/application/application.go` uses a label selector for `app.juju.is/created-by` (a label added by the mutating admission webhook). But when the controller's service account creates resources, the webhook's RBAC mapper doesn't map it to the app name (`FailurePolicy: Ignore`), so the label is silently not added. Even if `Delete()` were called, it would find zero matching resources. The only resources that would be cleaned up are the 3 direct-by-name deletions (ClusterRoleBinding, ClusterRole, ServiceAccount at lines 1005-1007).
+
+**Files involved**:
+- `internal/worker/caasapplicationprovisioner/ops.go` — `appDying()` (line 401), `appDead()` (line 422)
+- `domain/removal/service/service.go` — removal job (line ~204)
+- `internal/provider/kubernetes/application/application.go` — `Delete()` (line ~1009)
+- `internal/worker/caasadmission/handler.go` — webhook label patching (line 133)
+
+**Suggested fix direction**: Either (a) introduce a "has-resources" flag that prevents DB deletion until the worker confirms K8s cleanup is complete, or (b) make the `appDying()` path tolerant of "not found" errors so it can fall through to K8s cleanup even when the DB record is already gone.
+
 ## Requirements *(mandatory)*
 
 ### Functional Requirements
@@ -139,10 +175,11 @@ As an operator managing multiple applications across a Kubernetes model, I want 
 
 ### Assumptions
 
-- The underlying Kubernetes provider already supports creating and managing Deployment, StatefulSet, and DaemonSet resources. This feature is about wiring the selection mechanism through the system, not implementing new Kubernetes resource management.
+- The underlying Kubernetes provider already supports creating and managing Deployment, StatefulSet, and DaemonSet resources. However, `currentScale()` and `computeStatus()` only had full implementations for StatefulSet — Deployment/DaemonSet cases returned `NotSupported`. These were implemented as part of this feature (see tasks T044-T045).
 - The automatic inference heuristic is simple: any charm declaring persistent storage in its metadata gets StatefulSet; charms with no storage declarations get Deployment. This is deliberately conservative to preserve backward compatibility. Operators who need different behavior can use the explicit constraint.
 - Changing workload type on a running application is out of scope. This would require destroying and recreating the Kubernetes resources, which is a complex and potentially data-losing operation best handled by explicit redeployment.
 - DaemonSet unit representation in status will use the same ordinal naming as other workload types for simplicity. Mapping pods to specific nodes is deferred to future work.
+- StatefulSet pod names follow `<app>-<ordinal>` convention, so unit registration can derive the ordinal from the pod name. Deployment/DaemonSet pod names have random suffixes (e.g., `nginx-759b4f4b68-5mk8l`), so unit registration uses a 3-step strategy: (1) look up existing unit by provider ID (idempotent re-registration), (2) find an unassigned unit with no `k8s_pod` row (pre-created at deploy time), (3) allocate the next available ordinal. Additionally, the unit registration scaling gate is relaxed for non-StatefulSet deployments: StatefulSet requires `Scaling=true` AND `ordinal < ScaleTarget` (strict gate set by `EnsureScale`), while Deployment/DaemonSet counts alive units and only requires `aliveCount < appScale.Scale` since pods may start before `EnsureScale` runs.
 - The `deployment-type` constraint is only meaningful for Kubernetes (CAAS) models and is silently ignored (no warning or error) for IAAS models, consistent with how other Kubernetes-specific constraints behave.
 
 ## Success Criteria *(mandatory)*

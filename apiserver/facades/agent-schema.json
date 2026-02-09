@@ -6568,6 +6568,9 @@
                         "cpu-power": {
                             "type": "integer"
                         },
+                        "deployment-type": {
+                            "type": "string"
+                        },
                         "image-id": {
                             "type": "string"
                         },

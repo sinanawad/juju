@@ -2841,7 +2841,7 @@ func (s *applicationSuite) TestServiceActive(c *tc.C) {
 	})
 }
 
-func (s *applicationSuite) TestServiceNotSupportedDaemon(c *tc.C) {
+func (s *applicationSuite) TestServiceDaemonWaiting(c *tc.C) {
 	app, _ := s.getApp(c, caas.DeploymentDaemon, false)
 	s.assertEnsure(
 		c, app, false, constraints.Value{}, false, false, "", nil, func() {},
@@ -2854,11 +2854,27 @@ func (s *applicationSuite) TestServiceNotSupportedDaemon(c *tc.C) {
 	_, err := s.client.CoreV1().Services("test").Update(c.Context(), testSvc, metav1.UpdateOptions{})
 	c.Assert(err, tc.ErrorIsNil)
 
-	_, err = app.Service()
-	c.Assert(err, tc.ErrorMatches, `deployment type "daemon" not supported`)
+	svc, err := app.Service()
+	c.Assert(err, tc.ErrorIsNil)
+
+	since := time.Time{}
+	c.Assert(svc, tc.DeepEquals, &caas.Service{
+		Id: "deadbeaf",
+		Addresses: network.ProviderAddresses{{
+			MachineAddress: network.MachineAddress{
+				Value: "10.6.6.6",
+				Type:  "ipv4",
+				Scope: "local-cloud",
+			},
+		}},
+		Status: status.StatusInfo{
+			Status: "waiting",
+			Since:  &since,
+		},
+	})
 }
 
-func (s *applicationSuite) TestServiceNotSupportedStateless(c *tc.C) {
+func (s *applicationSuite) TestServiceStatelessWaiting(c *tc.C) {
 	app, _ := s.getApp(c, caas.DeploymentStateless, false)
 	s.assertEnsure(
 		c, app, false, constraints.Value{}, false, false, "", nil, func() {},
@@ -2871,8 +2887,24 @@ func (s *applicationSuite) TestServiceNotSupportedStateless(c *tc.C) {
 	_, err := s.client.CoreV1().Services("test").Update(c.Context(), testSvc, metav1.UpdateOptions{})
 	c.Assert(err, tc.ErrorIsNil)
 
-	_, err = app.Service()
-	c.Assert(err, tc.ErrorMatches, `deployment type "stateless" not supported`)
+	svc, err := app.Service()
+	c.Assert(err, tc.ErrorIsNil)
+
+	since := time.Time{}
+	c.Assert(svc, tc.DeepEquals, &caas.Service{
+		Id: "deadbeaf",
+		Addresses: network.ProviderAddresses{{
+			MachineAddress: network.MachineAddress{
+				Value: "10.6.6.6",
+				Type:  "ipv4",
+				Scope: "local-cloud",
+			},
+		}},
+		Status: status.StatusInfo{
+			Status: "waiting",
+			Since:  &since,
+		},
+	})
 }
 
 func (s *applicationSuite) TestServiceTerminated(c *tc.C) {

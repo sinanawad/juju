@@ -474,28 +474,18 @@ func (a *API) provisioningInfo(ctx context.Context, appTag names.ApplicationTag)
 		Channel: origin.Platform.Channel,
 	}
 
-	// TODO(k8s): move to service so k8s broker can be used.
-	// modelImage, err := a.broker.GetModelOperatorDeploymentImage()
-	// if err != nil {
-	//	return nil, errors.Annotatef(err, "getting model operator deployment image")
-	//}
-	modelImage := cfg.CAASImageRepo() + "/" + podcfg.JujudOCIName
-
-	// gets the image repo from the model operator deployment image path.
-	modelImageRepo, err := podcfg.RecoverRepoFromOperatorPath(modelImage)
+	// Parse the image repo details from controller config. The config value
+	// may be a plain repository path or a JSON string with auth credentials.
+	imageRepoDetails, err := docker.NewImageRepoDetails(cfg.CAASImageRepo())
 	if err != nil {
-		return nil, errors.Trace(err)
+		return nil, errors.Annotatef(err, "parsing %s", controller.CAASImageRepo)
 	}
+	modelImageRepo := imageRepoDetails.Repository
 
 	// gets the provisioning info image path using the model repo and agent version.
 	modelImagePath, err := podcfg.GetJujuOCIImagePathFromModelRepo(modelImageRepo, vers)
 	if err != nil {
 		return nil, errors.Trace(err)
-	}
-
-	imageRepoDetails, err := docker.NewImageRepoDetails(modelImageRepo)
-	if err != nil {
-		return nil, errors.Annotatef(err, "parsing %s", controller.CAASImageRepo)
 	}
 
 	charmModifiedVersion, err := a.applicationService.GetCharmModifiedVersion(ctx, appID)

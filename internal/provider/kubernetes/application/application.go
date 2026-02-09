@@ -1362,6 +1362,52 @@ func (a *app) computeStatus(ctx context.Context, now time.Time) (string, status.
 			}
 		}
 		return statusMessage, jujuStatus, now, nil
+	case caas.DeploymentStateless:
+		d, err := a.getDeployment()
+		if err != nil {
+			return "", jujuStatus, now, errors.Trace(err)
+		}
+		if d.GetDeletionTimestamp() != nil {
+			return "", status.Terminated, now, nil
+		} else if d.Status.ReadyReplicas > 0 {
+			return "", status.Active, now, nil
+		}
+		var statusMessage string
+		events, err := resources.ListEventsForObject(ctx, a.client.CoreV1().Events(d.Namespace), d.Name, "Deployment")
+		if err != nil {
+			return "", jujuStatus, now, errors.Trace(err)
+		}
+		if count := len(events); count > 0 {
+			evt := events[count-1]
+			if evt.Type == corev1.EventTypeWarning && evt.Reason == "FailedCreate" {
+				jujuStatus = status.Error
+				statusMessage = evt.Message
+			}
+		}
+		return statusMessage, jujuStatus, now, nil
+	case caas.DeploymentDaemon:
+		ds := resources.NewDaemonSet(a.client.AppsV1().DaemonSets(a.namespace), a.namespace, a.name, nil)
+		if err := ds.Get(ctx); err != nil {
+			return "", jujuStatus, now, errors.Trace(err)
+		}
+		if ds.GetDeletionTimestamp() != nil {
+			return "", status.Terminated, now, nil
+		} else if ds.Status.NumberReady > 0 {
+			return "", status.Active, now, nil
+		}
+		var statusMessage string
+		events, err := resources.ListEventsForObject(ctx, a.client.CoreV1().Events(ds.Namespace), ds.Name, "DaemonSet")
+		if err != nil {
+			return "", jujuStatus, now, errors.Trace(err)
+		}
+		if count := len(events); count > 0 {
+			evt := events[count-1]
+			if evt.Type == corev1.EventTypeWarning && evt.Reason == "FailedCreate" {
+				jujuStatus = status.Error
+				statusMessage = evt.Message
+			}
+		}
+		return statusMessage, jujuStatus, now, nil
 	default:
 		return "", jujuStatus, now, errors.NotSupportedf("deployment type %q", a.deploymentType)
 	}

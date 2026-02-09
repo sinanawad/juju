@@ -177,14 +177,15 @@ The `github.com/juju/description/v11` library serializes model data during migra
 
 The K8s provider layer (`internal/provider/kubernetes/application/`) already supports all three deployment types, but the following gaps were identified during substrate analysis. These are **pre-existing** and affect all deployment types — they are not introduced by this feature and are not blockers.
 
-| Gap | Severity | Impact | File |
-|-----|----------|--------|------|
-| `computeStatus()` incomplete | Medium | Returns `NotSupported` for Deployment and DaemonSet; only StatefulSet has full status computation. `juju status` may show less detail for non-StatefulSet workloads. | `application.go` |
-| `Exists()` single-type check | Low | Only checks the resource matching stored deployment type. Won't detect a stray resource of a different type with the same name. | `application.go` |
-| No drift detection | Low | Manual `kubectl` changes to resource type are not detected by Juju. | N/A |
-| No cross-type resource validation | Low | If a wrong resource type exists with the same name, `Exists()` returns false rather than an error. | `application.go` |
+| Gap | Severity | Impact | File | Status |
+|-----|----------|--------|------|--------|
+| ~~`computeStatus()` incomplete~~ | ~~Medium~~ | ~~Returns `NotSupported` for Deployment and DaemonSet~~ | `application.go` | **FIXED** (T045) — implemented for all 3 types |
+| ~~`currentScale()` incomplete~~ | ~~Medium~~ | ~~Returns `NotSupported` for Deployment and DaemonSet~~ | `scale.go` | **FIXED** (T044) — implemented for all 3 types |
+| `Exists()` single-type check | Low | Only checks the resource matching stored deployment type. Won't detect a stray resource of a different type with the same name. | `application.go` | Open |
+| No drift detection | Low | Manual `kubectl` changes to resource type are not detected by Juju. | N/A | Open |
+| No cross-type resource validation | Low | If a wrong resource type exists with the same name, `Exists()` returns false rather than an error. | `application.go` | Open |
 
-**Recommendation**: The `computeStatus()` gap should be addressed in a follow-up PR to provide proper status reporting for Deployment and DaemonSet workloads (computing ready/waiting/blocked from pod conditions). This is independent of the deployment-type selection feature.
+**Remaining gaps**: `Exists()` single-type check, drift detection, and cross-type validation are low-severity and can be addressed in a follow-up PR.
 
 ## Complexity Tracking
 

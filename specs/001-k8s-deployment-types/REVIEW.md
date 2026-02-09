@@ -62,12 +62,14 @@ Specifically:
 
 ## Known Gaps (Pre-Existing, Not Introduced)
 
-The K8s provider has gaps that affect all deployment types equally:
-- `computeStatus()` only implemented for StatefulSet (Deployment/DaemonSet return NotSupported)
-- No drift detection for manual `kubectl` edits
+The K8s provider has low-severity gaps that affect all deployment types equally:
 - `Exists()` only checks the stored type, won't detect a stray resource of a different type
+- No drift detection for manual `kubectl` edits
+- No cross-type resource validation
 
-These are documented but not in scope for this feature.
+Note: `computeStatus()` and `currentScale()` were initially incomplete for Deployment/DaemonSet (returned NotSupported) but were **fixed** as part of this feature (T044, T045).
+
+These remaining gaps are documented but not in scope for this feature.
 
 ## Lifecycle Audit Results
 
@@ -124,6 +126,12 @@ The diff touches ~30 files across 6 layers. No new packages.
 **Wire types**: `rpc/params/caas.go`
 
 To see the full diff: `git diff main...001-k8s-deployment-types`
+
+## Bugs Fixed After Review
+
+1. **Cross-package test regression** — `domain/application/service_test.go` had 4 mock expectations using `caas.DeploymentStateful` but `stubCharm` has no storage, so deployment type inference correctly yields `stateless`. Updated all 4 expectations to `caas.DeploymentStateless`. Suite now green.
+
+2. **Non-ordered scale completion check** — `ops.go:804` used `len(units)` (includes dead units) to decide whether scaling-up is complete, but the effective scale (`unitScale`) for Deployment/DaemonSet only counts non-dead units. When dead units accumulate, the old check would prematurely clear the scaling flag despite insufficient alive replicas. Fixed to use `unitScale` consistently for both ordered and non-ordered paths.
 
 ## One Question for Reviewer
 
