@@ -187,7 +187,10 @@ func (st *State) CreateCAASApplication(
 		return "", errors.Capture(err)
 	}
 
-	deploymentTypeID := encodeDeploymentType(args.DeploymentType)
+	deploymentTypeID, err := encodeDeploymentType(args.DeploymentType)
+	if err != nil {
+		return "", errors.Capture(err)
+	}
 
 	err = db.Txn(ctx, func(ctx context.Context, tx *sqlair.TX) error {
 		if err := st.deleteApplicationSequence(ctx, tx, name); err != nil {
@@ -530,6 +533,28 @@ WHERE  name = $unitNameLife.name
 	return life.Life(unit.LifeID), nil
 }
 
+// countAliveUnitsForApplication counts the number of alive units for the
+// given application UUID.
+func (st *State) countAliveUnitsForApplication(ctx context.Context, tx *sqlair.TX, appUUID string) (int, error) {
+	app := entityUUID{UUID: appUUID}
+	q := `
+SELECT COUNT(*) AS &countResult.count
+FROM unit
+WHERE application_uuid = $entityUUID.uuid
+AND life_id = 0
+`
+	stmt, err := st.Prepare(q, app, countResult{})
+	if err != nil {
+		return 0, errors.Capture(err)
+	}
+	var result countResult
+	err = tx.Query(ctx, stmt, app).Get(&result)
+	if err != nil {
+		return 0, errors.Errorf("counting alive units for app %q: %w", appUUID, err)
+	}
+	return result.Count, nil
+}
+
 // GetApplicationScaleState looks up the scale state of the specified application, returning an error
 // satisfying [applicationerrors.ApplicationNotFound] if the application is not found.
 func (st *State) GetApplicationScaleState(ctx context.Context, appUUID coreapplication.UUID) (application.ScaleState, error) {
@@ -640,7 +665,7 @@ WHERE a.name = $entityName.name;
 	if err != nil {
 		return "", errors.Capture(err)
 	}
-	return decodeDeploymentType(dtID.DeploymentTypeID), nil
+	return decodeDeploymentType(dtID.DeploymentTypeID)
 }
 
 // GetApplicationDetails returns the details of the specified application,
@@ -806,9 +831,11 @@ func (st *State) GetApplicationLifeByName(ctx context.Context, appName string) (
 // for migration. All applications and units in the model are alive and no
 // units are in the process of upgrading.
 // The following errors may be returned:
-// - [applicationerrors.ApplicationNotAlive] if any applications are not alive.
-// - [applicationerrors.UnitNotAlive] if any units are not alive.
-// - [applicationerrors.UnitUpgrading] if any units are still upgrading.
+//   - [applicationerrors.ApplicationNotAlive] if any applications are not alive.
+//   - [applicationerrors.UnitNotAlive] if any units are not alive.
+//   - [applicationerrors.UnitUpgrading] if any units are still upgrading.
+//   - [applicationerrors.DaemonDeploymentMigrationNotSupported] if any
+//     applications use the daemon deployment type.
 func (st *State) CheckApplicationsForMigration(ctx context.Context) error {
 	db, err := st.DB(ctx)
 	if err != nil {
@@ -819,8 +846,39 @@ func (st *State) CheckApplicationsForMigration(ctx context.Context) error {
 		if err := st.checkAllApplicationsAndUnitsAreAlive(ctx, tx); err != nil {
 			return err
 		}
+		if err := st.checkNoDaemonDeploymentApplications(ctx, tx); err != nil {
+			return err
+		}
 		return st.checkNoUnitsUpgrading(ctx, tx)
 	})
+}
+
+// checkNoDaemonDeploymentApplications rejects migration while any application
+// uses the daemon deployment type: the description serialization library does
+// not yet round-trip the deployment-type constraint, so a daemon application
+// would silently arrive on the target controller as a different workload type.
+func (st *State) checkNoDaemonDeploymentApplications(ctx context.Context, tx *sqlair.TX) error {
+	input := deploymentTypeResult{DeploymentTypeID: deploymentTypeDaemon}
+	stmt, err := st.Prepare(`
+SELECT &applicationName.*
+FROM   application
+WHERE  deployment_type_id = $deploymentTypeResult.deployment_type_id
+`, applicationName{}, input)
+	if err != nil {
+		return errors.Capture(err)
+	}
+
+	var daemonApps []applicationName
+	err = tx.Query(ctx, stmt, input).GetAll(&daemonApps)
+	if err != nil && !errors.Is(err, sqlair.ErrNoRows) {
+		return errors.Capture(err)
+	} else if err == nil {
+		names := transform.Slice(daemonApps, func(app applicationName) string { return app.Name })
+		return errors.Errorf(
+			"application(s) %q use the daemon deployment type", strings.Join(names, ", "),
+		).Add(applicationerrors.DaemonDeploymentMigrationNotSupported)
+	}
+	return nil
 }
 
 func (st *State) checkAllApplicationsAndUnitsAreAlive(ctx context.Context, tx *sqlair.TX) error {

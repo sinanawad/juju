@@ -53,11 +53,37 @@ func (a *app) currentScale(ctx context.Context) (int, error) {
 			err = errors.WithType(err, errors.NotFound)
 		}
 		if err != nil {
-			return 0, fmt.Errorf("fetching scale for application %q statefuleset: %w",
+			return 0, fmt.Errorf("fetching scale for application %q statefulset: %w",
 				a.name, err)
 		}
 
 		return int(*ss.Spec.Replicas), nil
+
+	case caas.DeploymentStateless:
+		d, err := a.client.AppsV1().Deployments(a.namespace).Get(ctx, a.name, meta.GetOptions{})
+		if k8serrors.IsNotFound(err) {
+			err = errors.WithType(err, errors.NotFound)
+		}
+		if err != nil {
+			return 0, fmt.Errorf("fetching scale for application %q deployment: %w",
+				a.name, err)
+		}
+
+		return int(*d.Spec.Replicas), nil
+
+	case caas.DeploymentDaemon:
+		// DaemonSets don't have a replica count; they run one pod per
+		// matching node. Return the number of desired pods.
+		ds, err := a.client.AppsV1().DaemonSets(a.namespace).Get(ctx, a.name, meta.GetOptions{})
+		if k8serrors.IsNotFound(err) {
+			err = errors.WithType(err, errors.NotFound)
+		}
+		if err != nil {
+			return 0, fmt.Errorf("fetching scale for application %q daemonset: %w",
+				a.name, err)
+		}
+
+		return int(ds.Status.DesiredNumberScheduled), nil
 
 	default:
 		return 0, fmt.Errorf("application %q deployment type %q is not supported for fetching scale",

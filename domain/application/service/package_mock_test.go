@@ -387,6 +387,7 @@ type MockStateMockRecorder struct {
 	getApplicationConfigHashExpects                           []*gomock.Call2_2[context.Context, application.UUID, string, error]
 	getApplicationConfigWithDefaultsExpects                   []*gomock.Call2_2[context.Context, application.UUID, map[string]application0.ApplicationConfig, error]
 	getApplicationConstraintsExpects                          []*gomock.Call2_2[context.Context, application.UUID, constraints0.Constraints, error]
+	getApplicationDeploymentTypeExpects                       []*gomock.Call2_2[context.Context, string, string, error]
 	getApplicationDetailsExpects                              []*gomock.Call2_2[context.Context, application.UUID, application0.ApplicationDetails, error]
 	getApplicationDetailsByNameExpects                        []*gomock.Call2_2[context.Context, string, application0.ApplicationDetails, error]
 	getApplicationEndpointBindingsExpects                     []*gomock.Call2_2[context.Context, application.UUID, map[string]string, error]
@@ -406,6 +407,7 @@ type MockStateMockRecorder struct {
 	getAsyncCharmDownloadInfoExpects                          []*gomock.Call2_2[context.Context, application.UUID, application0.CharmDownloadInfo, error]
 	getAvailableCharmArchiveSHA256Expects                     []*gomock.Call2_2[context.Context, charm.ID, string, error]
 	getCAASUnitContextExpects                                 []*gomock.Call2_2[context.Context, string, internal.CAASUnitContext, error]
+	getCAASUnitNameByProviderIDExpects                        []*gomock.Call3_3[context.Context, application.UUID, string, unit.Name, bool, error]
 	getCAASUnitRegisteredExpects                              []*gomock.Call2_4[context.Context, unit.Name, bool, unit.UUID, network0.NetNodeUUID, error]
 	getCharmExpects                                           []*gomock.Call2_3[context.Context, charm.ID, charm0.Charm, *charm0.DownloadInfo, error]
 	getCharmActionsExpects                                    []*gomock.Call2_2[context.Context, charm.ID, charm0.Actions, error]
@@ -436,10 +438,12 @@ type MockStateMockRecorder struct {
 	getModelStoragePoolsExpects                               []*gomock.Call1_2[context.Context, internal.ModelStoragePools, error]
 	getModelTypeExpects                                       []*gomock.Call1_2[context.Context, model.ModelType, error]
 	getNetNodeUUIDByUnitNameExpects                           []*gomock.Call2_2[context.Context, unit.Name, string, error]
+	getNextCAASUnitOrdinalExpects                             []*gomock.Call2_2[context.Context, string, int, error]
 	getSpaceUUIDByNameExpects                                 []*gomock.Call2_2[context.Context, string, network.SpaceUUID, error]
 	getStorageAddInfoByUnitUUIDExpects                        []*gomock.Call3_2[context.Context, unit.UUID, storage.Name, internal.StorageInfoForAdd, error]
 	getStorageAttachInfoByUnitUUIDAndStorageUUIDExpects       []*gomock.Call3_2[context.Context, unit.UUID, storage0.StorageInstanceUUID, storage0.StorageInstanceInfoForUnitAttach, error]
 	getStorageAttachInfoForStorageInstancesExpects            []*gomock.Call2_2[context.Context, []storage0.StorageInstanceUUID, []storage0.StorageInstanceInfoForAttach, error]
+	getUnassignedCAASUnitNameExpects                          []*gomock.Call2_3[context.Context, application.UUID, unit.Name, bool, error]
 	getUnitK8sPodInfoExpects                                  []*gomock.Call2_2[context.Context, unit.Name, application0.K8sPodInfo, error]
 	getUnitLifeExpects                                        []*gomock.Call2_2[context.Context, unit.Name, life.Life, error]
 	getUnitMachineNameExpects                                 []*gomock.Call2_2[context.Context, string, string, error]
@@ -920,43 +924,22 @@ func (mr *MockStateMockRecorder) GetApplicationConstraints(ctx, appUUID any) *Mo
 type MockStateGetApplicationConstraintsCall = gomock.Call2_2[context.Context, application.UUID, constraints0.Constraints, error]
 
 // GetApplicationDeploymentType mocks base method.
-func (m *MockState) GetApplicationDeploymentType(arg0 context.Context, arg1 string) (string, error) {
+func (m *MockState) GetApplicationDeploymentType(ctx context.Context, appName string) (string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetApplicationDeploymentType", arg0, arg1)
-	ret0, _ := ret[0].(string)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
+	return gomock.Dispatch2_2(&m.recorder.getApplicationDeploymentTypeExpects, m.ctrl, m, "GetApplicationDeploymentType", ctx, appName)
 }
 
 // GetApplicationDeploymentType indicates an expected call of GetApplicationDeploymentType.
-func (mr *MockStateMockRecorder) GetApplicationDeploymentType(arg0, arg1 any) *MockStateGetApplicationDeploymentTypeCall {
+func (mr *MockStateMockRecorder) GetApplicationDeploymentType(ctx, appName any) *MockStateGetApplicationDeploymentTypeCall {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetApplicationDeploymentType", reflect.TypeOf((*MockState)(nil).GetApplicationDeploymentType), arg0, arg1)
-	return &MockStateGetApplicationDeploymentTypeCall{Call: call}
+	call := gomock.NewCall2_2[context.Context, string, string, error](mr.mock.ctrl.T, mr.mock, "GetApplicationDeploymentType", gomock.EnsureMatcher(ctx), gomock.EnsureMatcher(appName))
+	mr.getApplicationDeploymentTypeExpects = append(mr.getApplicationDeploymentTypeExpects, call)
+	mr.mock.ctrl.Track(call.Call)
+	return call
 }
 
-// MockStateGetApplicationDeploymentTypeCall wrap *gomock.Call
-type MockStateGetApplicationDeploymentTypeCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockStateGetApplicationDeploymentTypeCall) Return(arg0 string, arg1 error) *MockStateGetApplicationDeploymentTypeCall {
-	c.Call = c.Call.Return(arg0, arg1)
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockStateGetApplicationDeploymentTypeCall) Do(f func(context.Context, string) (string, error)) *MockStateGetApplicationDeploymentTypeCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockStateGetApplicationDeploymentTypeCall) DoAndReturn(f func(context.Context, string) (string, error)) *MockStateGetApplicationDeploymentTypeCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
+// MockStateGetApplicationDeploymentTypeCall is the typed call wrapper for GetApplicationDeploymentType.
+type MockStateGetApplicationDeploymentTypeCall = gomock.Call2_2[context.Context, string, string, error]
 
 // GetApplicationDetails mocks base method.
 func (m *MockState) GetApplicationDetails(ctx context.Context, appUUID application.UUID) (application0.ApplicationDetails, error) {
@@ -1300,6 +1283,24 @@ func (mr *MockStateMockRecorder) GetCAASUnitContext(ctx, unitName any) *MockStat
 
 // MockStateGetCAASUnitContextCall is the typed call wrapper for GetCAASUnitContext.
 type MockStateGetCAASUnitContextCall = gomock.Call2_2[context.Context, string, internal.CAASUnitContext, error]
+
+// GetCAASUnitNameByProviderID mocks base method.
+func (m *MockState) GetCAASUnitNameByProviderID(arg0 context.Context, arg1 application.UUID, arg2 string) (unit.Name, bool, error) {
+	m.ctrl.T.Helper()
+	return gomock.Dispatch3_3(&m.recorder.getCAASUnitNameByProviderIDExpects, m.ctrl, m, "GetCAASUnitNameByProviderID", arg0, arg1, arg2)
+}
+
+// GetCAASUnitNameByProviderID indicates an expected call of GetCAASUnitNameByProviderID.
+func (mr *MockStateMockRecorder) GetCAASUnitNameByProviderID(arg0, arg1, arg2 any) *MockStateGetCAASUnitNameByProviderIDCall {
+	mr.mock.ctrl.T.Helper()
+	call := gomock.NewCall3_3[context.Context, application.UUID, string, unit.Name, bool, error](mr.mock.ctrl.T, mr.mock, "GetCAASUnitNameByProviderID", gomock.EnsureMatcher(arg0), gomock.EnsureMatcher(arg1), gomock.EnsureMatcher(arg2))
+	mr.getCAASUnitNameByProviderIDExpects = append(mr.getCAASUnitNameByProviderIDExpects, call)
+	mr.mock.ctrl.Track(call.Call)
+	return call
+}
+
+// MockStateGetCAASUnitNameByProviderIDCall is the typed call wrapper for GetCAASUnitNameByProviderID.
+type MockStateGetCAASUnitNameByProviderIDCall = gomock.Call3_3[context.Context, application.UUID, string, unit.Name, bool, error]
 
 // GetCAASUnitRegistered mocks base method.
 func (m *MockState) GetCAASUnitRegistered(arg0 context.Context, arg1 unit.Name) (bool, unit.UUID, network0.NetNodeUUID, error) {
@@ -1841,6 +1842,24 @@ func (mr *MockStateMockRecorder) GetNetNodeUUIDByUnitName(ctx, name any) *MockSt
 // MockStateGetNetNodeUUIDByUnitNameCall is the typed call wrapper for GetNetNodeUUIDByUnitName.
 type MockStateGetNetNodeUUIDByUnitNameCall = gomock.Call2_2[context.Context, unit.Name, string, error]
 
+// GetNextCAASUnitOrdinal mocks base method.
+func (m *MockState) GetNextCAASUnitOrdinal(arg0 context.Context, arg1 string) (int, error) {
+	m.ctrl.T.Helper()
+	return gomock.Dispatch2_2(&m.recorder.getNextCAASUnitOrdinalExpects, m.ctrl, m, "GetNextCAASUnitOrdinal", arg0, arg1)
+}
+
+// GetNextCAASUnitOrdinal indicates an expected call of GetNextCAASUnitOrdinal.
+func (mr *MockStateMockRecorder) GetNextCAASUnitOrdinal(arg0, arg1 any) *MockStateGetNextCAASUnitOrdinalCall {
+	mr.mock.ctrl.T.Helper()
+	call := gomock.NewCall2_2[context.Context, string, int, error](mr.mock.ctrl.T, mr.mock, "GetNextCAASUnitOrdinal", gomock.EnsureMatcher(arg0), gomock.EnsureMatcher(arg1))
+	mr.getNextCAASUnitOrdinalExpects = append(mr.getNextCAASUnitOrdinalExpects, call)
+	mr.mock.ctrl.Track(call.Call)
+	return call
+}
+
+// MockStateGetNextCAASUnitOrdinalCall is the typed call wrapper for GetNextCAASUnitOrdinal.
+type MockStateGetNextCAASUnitOrdinalCall = gomock.Call2_2[context.Context, string, int, error]
+
 // GetSpaceUUIDByName mocks base method.
 func (m *MockState) GetSpaceUUIDByName(ctx context.Context, name string) (network.SpaceUUID, error) {
 	m.ctrl.T.Helper()
@@ -1912,6 +1931,24 @@ func (mr *MockStateMockRecorder) GetStorageAttachInfoForStorageInstances(ctx, st
 
 // MockStateGetStorageAttachInfoForStorageInstancesCall is the typed call wrapper for GetStorageAttachInfoForStorageInstances.
 type MockStateGetStorageAttachInfoForStorageInstancesCall = gomock.Call2_2[context.Context, []storage0.StorageInstanceUUID, []storage0.StorageInstanceInfoForAttach, error]
+
+// GetUnassignedCAASUnitName mocks base method.
+func (m *MockState) GetUnassignedCAASUnitName(arg0 context.Context, arg1 application.UUID) (unit.Name, bool, error) {
+	m.ctrl.T.Helper()
+	return gomock.Dispatch2_3(&m.recorder.getUnassignedCAASUnitNameExpects, m.ctrl, m, "GetUnassignedCAASUnitName", arg0, arg1)
+}
+
+// GetUnassignedCAASUnitName indicates an expected call of GetUnassignedCAASUnitName.
+func (mr *MockStateMockRecorder) GetUnassignedCAASUnitName(arg0, arg1 any) *MockStateGetUnassignedCAASUnitNameCall {
+	mr.mock.ctrl.T.Helper()
+	call := gomock.NewCall2_3[context.Context, application.UUID, unit.Name, bool, error](mr.mock.ctrl.T, mr.mock, "GetUnassignedCAASUnitName", gomock.EnsureMatcher(arg0), gomock.EnsureMatcher(arg1))
+	mr.getUnassignedCAASUnitNameExpects = append(mr.getUnassignedCAASUnitNameExpects, call)
+	mr.mock.ctrl.Track(call.Call)
+	return call
+}
+
+// MockStateGetUnassignedCAASUnitNameCall is the typed call wrapper for GetUnassignedCAASUnitName.
+type MockStateGetUnassignedCAASUnitNameCall = gomock.Call2_3[context.Context, application.UUID, unit.Name, bool, error]
 
 // GetUnitK8sPodInfo mocks base method.
 func (m *MockState) GetUnitK8sPodInfo(arg0 context.Context, arg1 unit.Name) (application0.K8sPodInfo, error) {

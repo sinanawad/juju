@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"slices"
 	"strings"
 	"time"
 
@@ -133,7 +134,7 @@ type ApplicationOps interface {
 		applicationService ApplicationService, logger logger.Logger) error
 
 	EnsureScale(ctx context.Context, appName string, appUUID coreapplication.UUID,
-		app caas.Application, appLife life.Value, facade CAASProvisionerFacade,
+		app caas.Application, appLife life.Value, orderedScale bool, facade CAASProvisionerFacade,
 		applicationService ApplicationService, logger logger.Logger) error
 }
 
@@ -229,11 +230,12 @@ func (applicationOps) ReconcileDeadUnitScale(
 func (applicationOps) EnsureScale(
 	ctx context.Context,
 	appName string, appUUID coreapplication.UUID, app caas.Application, appLife life.Value,
+	orderedScale bool,
 	facade CAASProvisionerFacade,
 	applicationService ApplicationService,
 	logger logger.Logger,
 ) error {
-	return ensureScale(ctx, appName, appUUID, app, appLife, facade, applicationService, logger)
+	return ensureScale(ctx, appName, appUUID, app, appLife, orderedScale, facade, applicationService, logger)
 }
 
 type Tomb interface {
@@ -409,7 +411,9 @@ func appDying(
 	logger logger.Logger,
 ) (err error) {
 	logger.Debugf(ctx, "application %q dying", appName)
-	err = ensureScale(ctx, appName, appUUID, app, appLife, facade, applicationService, logger)
+	// orderedScale=true is fine here: when scaling to 0, all units are
+	// destroyed regardless of the deployment type.
+	err = ensureScale(ctx, appName, appUUID, app, appLife, true, facade, applicationService, logger)
 	if err != nil {
 		return errors.Annotate(err, "cannot scale dying application to 0")
 	}
@@ -722,6 +726,7 @@ func reconcileDeadUnitScale(
 func ensureScale(
 	ctx context.Context,
 	appName string, appUUID coreapplication.UUID, app caas.Application, appLife life.Value,
+	orderedScale bool,
 	facade CAASProvisionerFacade,
 	applicationService ApplicationService,
 	logger logger.Logger,
@@ -745,7 +750,6 @@ func ensureScale(
 		return errors.Trace(err)
 	}
 
-	logger.Debugf(ctx, "updating application %q scale to %d", appName, desiredScale)
 	if !ps.Scaling || appLife != life.Alive {
 		err := updateProvisioningState(ctx, appName, true, desiredScale, applicationService)
 		if err != nil {
@@ -761,10 +765,23 @@ func ensureScale(
 	}
 
 	unitScale := 0
-	for unitName := range units {
-		nextUnitNumber := unitName.Number() + 1
-		if nextUnitNumber > unitScale {
-			unitScale = nextUnitNumber
+	if orderedScale {
+		// StatefulSet: ordinals are contiguous 0..N-1, so the
+		// effective scale is max(ordinal) + 1.
+		for unitName := range units {
+			nextUnitNumber := unitName.Number() + 1
+			if nextUnitNumber > unitScale {
+				unitScale = nextUnitNumber
+			}
+		}
+	} else {
+		// Deployment/DaemonSet: ordinals may have gaps (e.g.,
+		// unit /1 exists but /0 doesn't), so the effective
+		// scale is the number of non-dead units.
+		for _, unitLife := range units {
+			if unitLife != life.Dead {
+				unitScale++
+			}
 		}
 	}
 
@@ -787,7 +804,7 @@ func ensureScale(
 		} else if err != nil {
 			return err
 		}
-		if ps.ScaleTarget > len(units) {
+		if ps.ScaleTarget > unitScale {
 			// Scaling up must see units created.
 			return tryAgain
 		}
@@ -805,13 +822,37 @@ func ensureScale(
 	}
 
 	var unitsToDestroy []string
-	for unitName, unitLife := range units {
-		if unitName.Number() < ps.ScaleTarget {
-			// This is a unit we want to keep.
-			continue
+	if orderedScale {
+		// StatefulSet: destroy units with ordinal >= scaleTarget
+		// (higher ordinals are removed first).
+		for unitName, unitLife := range units {
+			if unitName.Number() < ps.ScaleTarget {
+				continue
+			}
+			if unitLife == life.Alive {
+				unitsToDestroy = append(unitsToDestroy, unitName.String())
+			}
 		}
-		if unitLife == life.Alive {
+	} else {
+		// Deployment/DaemonSet: destroy excess alive units beyond
+		// scaleTarget. Sort by ordinal descending for deterministic
+		// ordering (highest ordinals removed first).
+		var aliveUnits []coreunit.Name
+		for unitName, unitLife := range units {
+			if unitLife == life.Alive {
+				aliveUnits = append(aliveUnits, unitName)
+			}
+		}
+		slices.SortFunc(aliveUnits, func(a, b coreunit.Name) int {
+			return b.Number() - a.Number()
+		})
+		excess := unitScale - ps.ScaleTarget
+		for _, unitName := range aliveUnits {
+			if excess <= 0 {
+				break
+			}
 			unitsToDestroy = append(unitsToDestroy, unitName.String())
+			excess--
 		}
 	}
 	if len(unitsToDestroy) > 0 {

@@ -98,7 +98,7 @@
 
 ### Implementation
 
-- [ ] T021 [P] [US3] Add `DaemonSetScaleNotSupported` error constant to `domain/application/errors/errors.go` with message: "scaling is not supported for DaemonSet applications; scale is determined by the number of cluster nodes"
+- [x] T021 [P] [US3] Add `DaemonSetScaleNotSupported` error constant to `domain/application/errors/errors.go` with message: "scaling is not supported for DaemonSet applications; scale is determined by the number of cluster nodes"
 - [ ] T022 [US3] Add deployment type check in scale validation in `domain/application/service/application.go` — before processing scale change, query application deployment type; if `daemon`, return `DaemonSetScaleNotSupported` error
 
 **Checkpoint**: DaemonSet applications correctly reject manual scaling. Combined with Phase 3, the full DaemonSet workflow (deploy + scale blocking) is testable.
@@ -163,12 +163,21 @@
 
 **Purpose**: Validation, cleanup, and verification across all stories.
 
+### Test Runs
+
 - [ ] T030 Run `go test ./core/constraints/...` to verify constraint parsing, validation, and serialization
 - [ ] T031 Run `go test ./domain/application/...` to verify persistence, retrieval, scale validation, and immutability enforcement
 - [ ] T032 Run `go test ./internal/worker/caasapplicationprovisioner/...` to verify deployment type determination and dynamic provisioning
 - [ ] T033 Run `go test ./apiserver/facades/controller/caasapplicationprovisioner/...` to verify facade v2 and provisioning info population
 - [ ] T034 Run `go test ./cmd/juju/status/...` to verify status display with Type column
 - [ ] T035 Run quickstart.md validation: build with `make go-build` and verify no compilation errors
+
+### New Tests Required (Constitution IV — Test Discipline)
+
+- [ ] T050 [US1+2+4] Add unit tests for `RegisterCAASUnit` with `OrderedScale=false` in `domain/application/state/state_test.go` — verify Deployment/DaemonSet units can register when `ordinal < appScale.Scale` even when `Scaling=false`; verify rejection when `ordinal >= appScale.Scale`
+- [ ] T051 [US1+2+4] Add unit tests for `GetCAASUnitNameByProviderID` in `domain/application/state/state_test.go` — verify lookup returns correct unit name for known provider ID; returns `(empty, false, nil)` for unknown provider ID
+- [ ] T052 [US1+2+4] Add unit tests for `GetNextCAASUnitOrdinal` in `domain/application/state/state_test.go` — verify returns 0 for app with no units; returns `max+1` for app with existing units; handles gaps correctly
+- [ ] T053 [US1+2+4] Add unit tests for `RegisterCAASUnit` service-layer branching in `domain/application/service/provider_test.go` — verify StatefulSet derives ordinal from pod name; Deployment looks up by provider ID then falls back to next ordinal
 
 ---
 
@@ -179,6 +188,8 @@
 - **Setup (Phase 1)**: No dependencies — can start immediately
 - **Foundational (Phase 2)**: Depends on Phase 1 (schema must exist before persistence code)
 - **Story 1+2+4 (Phase 3)**: Depends on Phase 2 (constraint + domain types must exist)
+- **Provider Fixes (Phase 3a)**: Depends on Phase 3 (deployment type must flow through to provider)
+- **Unit Registration (Phase 3b)**: Depends on Phase 3 (deployment type must be queryable in domain layer)
 - **Story 3 (Phase 4)**: Depends on Phase 3 (deployment type must be persistable/queryable)
 - **Story 5 (Phase 5)**: Depends on Phase 3 (deployment type must be persisted)
 - **Migration (Phase 6)**: Depends on Phase 3; T040–T043 are a **release blocker** (external dep on `description` library)
@@ -190,6 +201,8 @@
 Phase 1 (Setup)
     └──> Phase 2 (Foundational)
               └──> Phase 3 (US1+2+4: Core feature) 🎯 MVP
+                        ├──> Phase 3a (Provider: currentScale + computeStatus)
+                        ├──> Phase 3b (Unit registration: naming + scaling gate)
                         ├──> Phase 4 (US3: DaemonSet scale blocking)
                         ├──> Phase 5 (US5: Status visibility)
                         └──> Phase 6 (Migration) ⚠️ T040-T043 = RELEASE BLOCKER
@@ -239,16 +252,50 @@ Phase 5 (US5: T023-T029)  ─┘── parallel (different layers, no dependenci
 1. Complete Phase 1: Setup (schema)
 2. Complete Phase 2: Foundational (constraints, types, persistence)
 3. Complete Phase 3: Story 1+2+4 (wire types, facade, worker, provider)
-4. **STOP and VALIDATE**: Deploy charms with different types, verify inference + constraint override + backward compat
-5. Run `go test` for core, domain, worker, and facade packages
+4. Complete Phase 3a: Provider fixes (currentScale, computeStatus for Deployment/DaemonSet)
+5. Complete Phase 3b: Unit registration refactor (naming, scaling gate for Deployment/DaemonSet)
+6. **STOP and VALIDATE**: Deploy charms with different types, verify inference + constraint override + backward compat
+7. Run `go test` for core, domain, worker, and facade packages
 
 ### Incremental Delivery
 
-1. Phases 1+2+3 → Core feature works → Test independently → **MVP**
+1. Phases 1+2+3+3a+3b → Core feature works end-to-end → Test independently → **MVP**
 2. Add Phase 4 (Story 3) → DaemonSet scale blocking → Test independently
 3. Add Phase 5 (Story 5) → Status visibility → Test independently
 4. Phase 6 → Full validation pass
 5. Each story adds value without breaking previous stories
+
+---
+
+## Phase 3a: Provider Layer Fixes (Discovered During Integration Testing)
+
+**Purpose**: The K8s provider layer already had scaffolding for all 3 deployment types, but key methods only had full implementations for StatefulSet — `currentScale()` and `computeStatus()` returned `NotSupported` for Deployment/DaemonSet. These are required for the feature to work end-to-end.
+
+- [x] T044 [P] [US1+2+4] Add `DeploymentStateless` and `DeploymentDaemon` cases to `currentScale()` in `internal/provider/kubernetes/application/scale.go` — Deployment reads `*d.Spec.Replicas`; DaemonSet reads `ds.Status.DesiredNumberScheduled`
+- [x] T045 [P] [US1+2+4] Add `DeploymentStateless` and `DeploymentDaemon` cases to `computeStatus()` in `internal/provider/kubernetes/application/application.go` — checks deletion timestamp, ready replicas, and warning events (same pattern as StatefulSet)
+
+**Checkpoint**: Provider layer now correctly reports scale and status for all 3 workload types.
+
+---
+
+## Phase 3b: Unit Registration Refactor (Discovered During Integration Testing)
+
+**Purpose**: StatefulSet pods have predictable names (`<app>-<ordinal>`), so unit registration could derive the unit ordinal from the pod name. Deployment/DaemonSet pods have random suffixes (e.g., `nginx-759b4f4b68-5mk8l`), requiring a different strategy for unit naming and a relaxed scaling gate for unit registration.
+
+### State Layer: New Queries for Non-StatefulSet Unit Registration
+
+- [x] T046 [P] [US1+2+4] Add `GetCAASUnitNameByProviderID(ctx, appUUID, providerID) (unitName, found, error)` to `domain/application/state/unit.go` — queries `unit JOIN k8s_pod` to find an existing unit by its cloud container provider ID (for idempotent re-registration after pod restart)
+- [x] T047 [P] [US1+2+4] Add `GetNextCAASUnitOrdinal(ctx, appName) (int, error)` to `domain/application/state/unit.go` — queries all existing unit names, parses their ordinal suffixes, and returns `max + 1` (or 0 if no units exist)
+
+### Service Layer: Deployment-Type-Aware Unit Registration
+
+- [x] T048 [US1+2+4] Refactor `RegisterCAASUnit()` in `domain/application/service/provider.go` to branch on deployment type: StatefulSet derives ordinal from pod name; Deployment/DaemonSet looks up existing unit by provider ID (T046) or assigns next ordinal (T047). Set `OrderedScale = (deploymentType == "stateful")` on the register args.
+
+### State Layer: Relaxed Scaling Gate for Non-StatefulSet
+
+- [x] T049 [US1+2+4] Modify `RegisterCAASUnit` scaling gate in `domain/application/state/unit.go` to differentiate by `OrderedScale` flag: StatefulSet requires `appScale.Scaling == true` AND `ordinal < ScaleTarget` (strict gate); Deployment/DaemonSet only requires `ordinal < appScale.Scale` (relaxed gate — pods start before `EnsureScale` sets `Scaling=true`)
+
+**Checkpoint**: Init containers in Deployment/DaemonSet pods can successfully register units via UnitIntroduction without being blocked by the StatefulSet-specific scaling gate.
 
 ---
 
@@ -265,11 +312,8 @@ Phase 5 (US5: T023-T029)  ─┘── parallel (different layers, no dependenci
 - Story 1+2+4 are grouped because they are deeply intertwined (constraint → persistence → provisioning → backward compat)
 - Story 3 and Story 5 are fully independent of each other and can be implemented in either order
 - No new packages are created — all changes fit within existing directory structure
-- Provider layer (`internal/provider/kubernetes/application/`) requires NO changes — it already supports all 3 types
+- ~~Provider layer (`internal/provider/kubernetes/application/`) requires NO changes — it already supports all 3 types~~ **CORRECTED**: Provider layer required `currentScale()` and `computeStatus()` implementations for Deployment/DaemonSet (T044, T045). The scaffolding existed but returned `NotSupported`.
 - Edge case 2 (DaemonSet + non-shared storage access mode): Deferred — the provider layer
   already uses standalone PVCs for DaemonSets (`handlePVCForStatelessResource`), avoiding the
   identity-dependent VolumeClaimTemplate pattern. No additional validation needed for MVP.
-- **K8s provider gaps (pre-existing, not blockers)**: `computeStatus()` only fully implemented
-  for StatefulSet (returns `NotSupported` for Deployment/DaemonSet); `Exists()` only checks the
-  stored deployment type (no cross-type detection); no drift detection for manual kubectl edits.
-  These should be addressed in a follow-up PR, not in this feature branch.
+- ~~**K8s provider gaps (pre-existing, not blockers)**: `computeStatus()` only fully implemented for StatefulSet (returns `NotSupported` for Deployment/DaemonSet)~~ **CORRECTED**: `computeStatus()` and `currentScale()` are now implemented for all 3 types (T044, T045). `Exists()` still only checks the stored deployment type (no cross-type detection); no drift detection for manual kubectl edits. These remaining gaps can be addressed in a follow-up PR.
