@@ -69,11 +69,46 @@ type applicationName struct {
 }
 
 type setApplicationDetails struct {
-	UUID      string    `db:"uuid"`
-	Name      string    `db:"name"`
-	CharmUUID string    `db:"charm_uuid"`
-	LifeID    life.Life `db:"life_id"`
-	SpaceUUID string    `db:"space_uuid"`
+	UUID             string    `db:"uuid"`
+	Name             string    `db:"name"`
+	CharmUUID        string    `db:"charm_uuid"`
+	LifeID           life.Life `db:"life_id"`
+	SpaceUUID        string    `db:"space_uuid"`
+	DeploymentTypeID int       `db:"deployment_type_id"`
+}
+
+// Deployment type ID constants matching the deployment_type lookup table.
+const (
+	deploymentTypeStateful  = 0
+	deploymentTypeStateless = 1
+	deploymentTypeDaemon    = 2
+)
+
+// encodeDeploymentType converts a deployment type string to its database ID.
+// Returns 0 (stateful) for unrecognised or empty values, preserving backward
+// compatibility.
+func encodeDeploymentType(dt string) int {
+	switch dt {
+	case "stateless":
+		return deploymentTypeStateless
+	case "daemon":
+		return deploymentTypeDaemon
+	default:
+		return deploymentTypeStateful
+	}
+}
+
+// decodeDeploymentType converts a database deployment type ID to its string
+// representation.
+func decodeDeploymentType(id int) string {
+	switch id {
+	case deploymentTypeStateless:
+		return "stateless"
+	case deploymentTypeDaemon:
+		return "daemon"
+	default:
+		return "stateful"
+	}
 }
 
 type applicationDetails struct {
@@ -83,6 +118,10 @@ type applicationDetails struct {
 	LifeID                 life.Life `db:"life_id"`
 	SpaceUUID              string    `db:"space_uuid"`
 	IsApplicationSynthetic bool      `db:"is_application_synthetic"`
+}
+
+type deploymentTypeResult struct {
+	DeploymentTypeID int `db:"deployment_type_id"`
 }
 
 type applicationScale struct {

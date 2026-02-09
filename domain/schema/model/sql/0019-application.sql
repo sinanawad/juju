@@ -1,3 +1,13 @@
+CREATE TABLE deployment_type (
+    id INT PRIMARY KEY,
+    name TEXT NOT NULL
+);
+
+INSERT INTO deployment_type VALUES
+(0, 'stateful'),
+(1, 'stateless'),
+(2, 'daemon');
+
 CREATE TABLE application (
     uuid TEXT NOT NULL PRIMARY KEY,
     name TEXT NOT NULL,
@@ -5,6 +15,7 @@ CREATE TABLE application (
     charm_uuid TEXT NOT NULL,
     charm_modified_version INT NOT NULL DEFAULT 0,
     charm_upgrade_on_error BOOLEAN DEFAULT FALSE,
+    deployment_type_id INT NOT NULL DEFAULT 0,
     -- space_uuid is the default binding for this application.
     space_uuid TEXT NOT NULL,
     CONSTRAINT fk_application_life
@@ -15,7 +26,10 @@ CREATE TABLE application (
     REFERENCES charm (uuid),
     CONSTRAINT fk_space_uuid
     FOREIGN KEY (space_uuid)
-    REFERENCES space (uuid)
+    REFERENCES space (uuid),
+    CONSTRAINT fk_application_deployment_type
+    FOREIGN KEY (deployment_type_id)
+    REFERENCES deployment_type (id)
 );
 
 CREATE UNIQUE INDEX idx_application_name

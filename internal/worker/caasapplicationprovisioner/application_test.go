@@ -143,6 +143,7 @@ func (s *ApplicationWorkerSuite) TestLifeDead(c *tc.C) {
 	gomock.InOrder(
 		applicationService.EXPECT().GetApplicationName(x, s.appUUID).Return("test", nil),
 		applicationService.EXPECT().IsControllerApplication(x, s.appUUID).Return(false, nil),
+		applicationService.EXPECT().GetApplicationDeploymentType(x, "test").Return("stateful", nil),
 		broker.EXPECT().Application("test", caas.DeploymentStateful).Return(app),
 		applicationService.EXPECT().GetApplicationLife(x, s.appUUID).Return(life.Dead, nil),
 		ops.EXPECT().AppDying(x, "test", s.appUUID, app, life.Dead, x, x, x, x).Return(nil),
@@ -188,6 +189,7 @@ func (s *ApplicationWorkerSuite) TestWorker(c *tc.C) {
 	gomock.InOrder(
 		applicationService.EXPECT().GetApplicationName(x, s.appUUID).Return("test", nil),
 		applicationService.EXPECT().IsControllerApplication(x, s.appUUID).Return(false, nil),
+		applicationService.EXPECT().GetApplicationDeploymentType(x, "test").Return("stateful", nil),
 		broker.EXPECT().Application("test", caas.DeploymentStateful).Return(app),
 		applicationService.EXPECT().GetApplicationLife(x, s.appUUID).Return(life.Alive, nil),
 
@@ -319,6 +321,7 @@ func (s *ApplicationWorkerSuite) TestWorkerStatusOnly(c *tc.C) {
 	gomock.InOrder(
 		applicationService.EXPECT().GetApplicationName(x, s.appUUID).Return("con-troll-er", nil),
 		applicationService.EXPECT().IsControllerApplication(x, s.appUUID).Return(true, nil),
+		applicationService.EXPECT().GetApplicationDeploymentType(x, "con-troll-er").Return("stateful", nil),
 		broker.EXPECT().Application("con-troll-er", caas.DeploymentStateful).Return(app),
 		applicationService.EXPECT().GetApplicationLife(x, s.appUUID).Return(life.Alive, nil),
 
@@ -400,6 +403,7 @@ func (s *ApplicationWorkerSuite) TestNotProvisionedRetry(c *tc.C) {
 	gomock.InOrder(
 		applicationService.EXPECT().GetApplicationName(x, s.appUUID).Return("test", nil),
 		applicationService.EXPECT().IsControllerApplication(x, s.appUUID).Return(false, nil),
+		applicationService.EXPECT().GetApplicationDeploymentType(x, "test").Return("stateful", nil),
 		broker.EXPECT().Application("test", caas.DeploymentStateful).Return(app),
 		applicationService.EXPECT().GetApplicationLife(x, s.appUUID).Return(life.Alive, nil),
 

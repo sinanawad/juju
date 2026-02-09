@@ -38,10 +38,11 @@ func (st *State) InsertMigratingApplication(ctx context.Context, name string, ar
 	charmIDStr := charmID.String()
 
 	appDetails := setApplicationDetails{
-		UUID:      args.ApplicationUUID,
-		Name:      name,
-		CharmUUID: charmIDStr,
-		LifeID:    life.Alive,
+		UUID:             args.ApplicationUUID,
+		Name:             name,
+		CharmUUID:        charmIDStr,
+		LifeID:           life.Alive,
+		DeploymentTypeID: encodeDeploymentType(args.DeploymentType),
 
 		// The space is defaulted to Alpha, which is guaranteed to exist.
 		// However, if there is a default space defined in endpoint bindings

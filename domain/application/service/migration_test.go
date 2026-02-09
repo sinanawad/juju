@@ -626,6 +626,7 @@ func (s *migrationServiceSuite) TestImportCAASApplication(c *tc.C) {
 		Charm:           ch,
 		Platform:        platform,
 		Scale:           1,
+		DeploymentType:  "stateless",
 		Config: map[string]application.AddApplicationConfig{
 			"foo": {
 				Type:  domaincharm.OptionString,

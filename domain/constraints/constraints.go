@@ -82,6 +82,12 @@ type Constraints struct {
 	// image. This is provider specific, and for the moment is only
 	// implemented on MAAS clouds.
 	ImageID *string
+
+	// DeploymentType, if not nil or empty, indicates the Kubernetes workload
+	// type to use for a CAAS application. Valid values are "stateless"
+	// (Deployment), "stateful" (StatefulSet), or "daemon" (DaemonSet).
+	// Only meaningful for CAAS models; silently ignored for IAAS models.
+	DeploymentType *string
 }
 
 // SpaceConstraint represents a single space constraint for an application.
@@ -112,6 +118,7 @@ func DecodeConstraints(coreCons constraints.Value) Constraints {
 		Zones:            coreCons.Zones,
 		AllocatePublicIP: coreCons.AllocatePublicIP,
 		ImageID:          coreCons.ImageID,
+		DeploymentType:   coreCons.DeploymentType,
 	}
 
 	if coreCons.Spaces == nil {
@@ -157,6 +164,7 @@ func EncodeConstraints(cons Constraints) constraints.Value {
 		Zones:            cons.Zones,
 		AllocatePublicIP: cons.AllocatePublicIP,
 		ImageID:          cons.ImageID,
+		DeploymentType:   cons.DeploymentType,
 	}
 
 	if cons.Spaces == nil {

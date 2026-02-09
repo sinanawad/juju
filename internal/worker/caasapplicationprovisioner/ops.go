@@ -58,10 +58,33 @@ type ProvisioningInfo struct {
 	Trust                bool
 	Scale                int
 
+	DeploymentType       string
+
 	CharmMeta           *charm.Meta
 	Images              map[string]coreresource.DockerImageDetails
 	FilesystemTemplates []storageprovisioning.FilesystemTemplate
 	StorageResourceTags map[string]string
+}
+
+// DetermineDeploymentType determines the CAAS deployment type to use.
+// If an explicit constraint is set, it takes priority. Otherwise, if
+// the charm declares persistent storage, StatefulSet is used. If no
+// storage is declared, Deployment is used.
+func DetermineDeploymentType(constraint string, hasStorage bool) caas.DeploymentType {
+	if constraint != "" {
+		switch constraint {
+		case "stateless":
+			return caas.DeploymentStateless
+		case "daemon":
+			return caas.DeploymentDaemon
+		default:
+			return caas.DeploymentStateful
+		}
+	}
+	if hasStorage {
+		return caas.DeploymentStateful
+	}
+	return caas.DeploymentStateless
 }
 
 // ApplicationOps defines all the operations the application worker can perform.
@@ -227,6 +250,14 @@ func appAlive(ctx context.Context, appName string, appUUID coreapplication.UUID,
 	clk clock.Clock, logger logger.Logger,
 ) error {
 	logger.Debugf(ctx, "ensuring application %q exists", appName)
+
+	// Warn if the deployment type is stateless but the charm declares
+	// persistent storage, as storage may not behave as expected.
+	if pi.DeploymentType == "stateless" && pi.CharmMeta != nil && len(pi.CharmMeta.Storage) > 0 {
+		logger.Warningf(ctx,
+			"application %q has deployment-type=stateless but the charm declares persistent storage; "+
+				"storage may not behave as expected with a stateless workload type", appName)
+	}
 
 	appState, err := app.Exists()
 	if err != nil {
@@ -885,6 +916,7 @@ func provisioningInfo(
 		CharmModifiedVersion: res.CharmModifiedVersion,
 		Trust:                res.Trust,
 		Scale:                res.Scale,
+		DeploymentType:       res.DeploymentType,
 	}
 
 	fsTemplates, err := storageProvisioningService.GetFilesystemTemplatesForApplication(ctx, appUUID)

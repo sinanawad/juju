@@ -157,6 +157,7 @@ func (s *CAASApplicationProvisionerSuite) TestProvisioningInfo(c *tc.C) {
 		},
 	}, nil)
 	s.applicationService.EXPECT().GetCharmModifiedVersion(gomock.Any(), coreapplication.UUID("deadbeef")).Return(10, nil)
+	s.applicationService.EXPECT().GetApplicationDeploymentType(gomock.Any(), "gitlab").Return("stateful", nil)
 	s.applicationService.EXPECT().GetApplicationTrustSetting(gomock.Any(), "gitlab").Return(true, nil)
 
 	result, err := s.api.ProvisioningInfo(c.Context(), params.Entities{Entities: []params.Entity{{Tag: "application-gitlab"}}})
@@ -176,6 +177,7 @@ func (s *CAASApplicationProvisionerSuite) TestProvisioningInfo(c *tc.C) {
 			CharmModifiedVersion: 10,
 			Scale:                3,
 			Trust:                true,
+			DeploymentType:       "stateful",
 			Base: params.Base{
 				Name:    "ubuntu",
 				Channel: "stable",
