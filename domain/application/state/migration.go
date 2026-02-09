@@ -37,6 +37,11 @@ func (st *State) InsertMigratingApplication(ctx context.Context, name string, ar
 		return errors.Capture(err)
 	}
 
+	deploymentTypeID, err := encodeDeploymentType(args.DeploymentType)
+	if err != nil {
+		return errors.Capture(err)
+	}
+
 	createApplication := `INSERT INTO application (*) VALUES ($setApplicationDetails.*)`
 	createApplicationStmt, err := st.Prepare(createApplication, setApplicationDetails{})
 	if err != nil {
@@ -125,10 +130,11 @@ func (st *State) InsertMigratingApplication(ctx context.Context, name string, ar
 		}
 
 		applicationDetails := setApplicationDetails{
-			UUID:      args.ApplicationUUID,
-			Name:      name,
-			CharmUUID: charmUUID,
-			LifeID:    life.Alive,
+			UUID:             args.ApplicationUUID,
+			Name:             name,
+			CharmUUID:        charmUUID,
+			LifeID:           life.Alive,
+			DeploymentTypeID: deploymentTypeID,
 
 			// The space is defaulted to Alpha, which is guaranteed to exist.
 			// However, if there is a default space defined in endpoint bindings

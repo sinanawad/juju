@@ -11,6 +11,7 @@ import (
 	"github.com/juju/collections/set"
 	"github.com/juju/collections/transform"
 
+	"github.com/juju/juju/caas"
 	coreapplication "github.com/juju/juju/core/application"
 	"github.com/juju/juju/core/arch"
 	corebase "github.com/juju/juju/core/base"
@@ -120,6 +121,11 @@ type ApplicationState interface {
 	// [applicationerrors.ApplicationNotFound] if the application is not
 	// found.
 	GetApplicationLifeByName(ctx context.Context, appName string) (coreapplication.UUID, life.Life, error)
+
+	// GetApplicationDeploymentType returns the deployment type for the
+	// specified application, returning an error satisfying
+	// [applicationerrors.ApplicationNotFound] if the application is not found.
+	GetApplicationDeploymentType(ctx context.Context, appName string) (string, error)
 
 	// GetApplicationDetails returns the application details for the given
 	// appUUID. This includes the life status and the name of the application.
@@ -917,6 +923,21 @@ func (s *Service) GetApplicationLifeByName(ctx context.Context, appName string) 
 	return appLife.Value()
 }
 
+// GetApplicationDeploymentType returns the deployment type for the specified
+// application.
+// The following errors may be returned:
+// - [applicationerrors.ApplicationNotFound] if the application is not found.
+func (s *Service) GetApplicationDeploymentType(ctx context.Context, appName string) (string, error) {
+	ctx, span := trace.Start(ctx, trace.NameFromFunc())
+	defer span.End()
+
+	dt, err := s.st.GetApplicationDeploymentType(ctx, appName)
+	if err != nil {
+		return "", errors.Errorf("getting deployment type for %q: %w", appName, err)
+	}
+	return dt, nil
+}
+
 // GetApplicationDetails looks up the details of the specified application,
 // which includes the life and name. Returns an error satisfying
 // [applicationerrors.ApplicationNotFound] if the application is not found.
@@ -939,9 +960,11 @@ func (s *Service) GetApplicationDetails(ctx context.Context, appUUID coreapplica
 // for migration. All applications and units in the model are alive and no
 // units are in the process of upgrading.
 // The following errors may be returned:
-// - [applicationerrors.ApplicationNotAlive] if any applications are not alive.
-// - [applicationerrors.UnitNotAlive] if any units are not alive.
-// - [applicationerrors.UnitUpgrading] if any units are still upgrading.
+//   - [applicationerrors.ApplicationNotAlive] if any applications are not alive.
+//   - [applicationerrors.UnitNotAlive] if any units are not alive.
+//   - [applicationerrors.UnitUpgrading] if any units are still upgrading.
+//   - [applicationerrors.DaemonDeploymentMigrationNotSupported] if any
+//     applications use the daemon deployment type.
 func (s *Service) CheckApplicationsForMigration(ctx context.Context) error {
 	ctx, span := trace.Start(ctx, trace.NameFromFunc())
 	defer span.End()
@@ -978,7 +1001,9 @@ func (s *Service) IsSubordinateApplicationByName(ctx context.Context, appName st
 
 // SetApplicationScale sets the application's desired scale value,
 // The following errors may be returned:
-// - [applicationerrors.ApplicationNotFound] if the application doesn't exist
+//   - [applicationerrors.ApplicationNotFound] if the application doesn't exist
+//   - [applicationerrors.DaemonSetScaleNotSupported] if the application uses
+//     the daemon deployment type
 func (s *Service) SetApplicationScale(ctx context.Context, appName string, scale int) error {
 	ctx, span := trace.Start(ctx, trace.NameFromFunc())
 	defer span.End()
@@ -988,6 +1013,9 @@ func (s *Service) SetApplicationScale(ctx context.Context, appName string, scale
 	}
 	appUUID, err := s.st.GetApplicationUUIDByName(ctx, appName)
 	if err != nil {
+		return errors.Capture(err)
+	}
+	if err := s.checkNotDaemonDeployment(ctx, appName); err != nil {
 		return errors.Capture(err)
 	}
 	appScale, err := s.st.GetApplicationScaleState(ctx, appUUID)
@@ -1000,6 +1028,21 @@ func (s *Service) SetApplicationScale(ctx context.Context, appName string, scale
 	err = s.st.SetDesiredApplicationScale(ctx, appUUID, scale)
 	if err != nil {
 		return errors.Errorf("setting scale for application %q: %w", appName, err)
+	}
+	return nil
+}
+
+// checkNotDaemonDeployment returns an error satisfying
+// [applicationerrors.DaemonSetScaleNotSupported] when the named application
+// uses the daemon deployment type: its scale is determined by the number of
+// cluster nodes and cannot be set manually.
+func (s *Service) checkNotDaemonDeployment(ctx context.Context, appName string) error {
+	deploymentType, err := s.st.GetApplicationDeploymentType(ctx, appName)
+	if err != nil {
+		return errors.Errorf("getting deployment type for %q: %w", appName, err)
+	}
+	if deploymentType == string(caas.DeploymentDaemon) {
+		return errors.Errorf("application %q: %w", appName, applicationerrors.DaemonSetScaleNotSupported)
 	}
 	return nil
 }
@@ -1039,7 +1082,8 @@ func (s *Service) ShouldAllowCharmUpgradeOnError(ctx context.Context, appName st
 
 // ChangeApplicationScale alters the existing scale by the provided change amount, returning the new amount.
 // It returns an error satisfying [applicationerrors.ApplicationNotFound] if the application
-// doesn't exist.
+// doesn't exist, or [applicationerrors.DaemonSetScaleNotSupported] if the
+// application uses the daemon deployment type.
 // This is used on CAAS models.
 func (s *Service) ChangeApplicationScale(ctx context.Context, appName string, scaleChange int) (int, error) {
 	ctx, span := trace.Start(ctx, trace.NameFromFunc())
@@ -1047,6 +1091,9 @@ func (s *Service) ChangeApplicationScale(ctx context.Context, appName string, sc
 
 	appUUID, err := s.st.GetApplicationUUIDByName(ctx, appName)
 	if err != nil {
+		return -1, errors.Capture(err)
+	}
+	if err := s.checkNotDaemonDeployment(ctx, appName); err != nil {
 		return -1, errors.Capture(err)
 	}
 

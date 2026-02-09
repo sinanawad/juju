@@ -348,6 +348,21 @@ const (
 	// has changed and no longer matches a pre-existing assumption about the
 	// Unit's Machine.
 	UnitMachineChanged = errors.ConstError("unit machine has changed")
+
+	// DeploymentTypeImmutable describes an error that occurs when an attempt
+	// is made to change the deployment type of a running application. The
+	// only way to change the workload type is to redeploy the application.
+	DeploymentTypeImmutable = errors.ConstError("deployment type cannot be changed")
+
+	// DaemonSetScaleNotSupported describes an error that occurs when an
+	// attempt is made to manually scale a daemon application, whose scale
+	// is determined by the number of cluster nodes.
+	DaemonSetScaleNotSupported = errors.ConstError("daemon applications cannot be scaled")
+
+	// DaemonDeploymentMigrationNotSupported describes an error that occurs
+	// when migrating a model containing a daemon deployment-type application;
+	// the serialization library cannot yet round-trip the deployment type.
+	DaemonDeploymentMigrationNotSupported = errors.ConstError("daemon deployment type cannot be migrated")
 )
 
 const (

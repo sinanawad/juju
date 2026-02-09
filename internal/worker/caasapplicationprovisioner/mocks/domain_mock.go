@@ -122,6 +122,45 @@ func (mr *MockApplicationServiceMockRecorder) GetAllUnitLifeForApplication(arg0,
 // MockApplicationServiceGetAllUnitLifeForApplicationCall is the typed call wrapper for GetAllUnitLifeForApplication.
 type MockApplicationServiceGetAllUnitLifeForApplicationCall = gomock.Call2_2[context.Context, application.UUID, map[unit.Name]life.Value, error]
 
+// GetApplicationDeploymentType mocks base method.
+func (m *MockApplicationService) GetApplicationDeploymentType(arg0 context.Context, arg1 string) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetApplicationDeploymentType", arg0, arg1)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetApplicationDeploymentType indicates an expected call of GetApplicationDeploymentType.
+func (mr *MockApplicationServiceMockRecorder) GetApplicationDeploymentType(arg0, arg1 any) *MockApplicationServiceGetApplicationDeploymentTypeCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetApplicationDeploymentType", reflect.TypeOf((*MockApplicationService)(nil).GetApplicationDeploymentType), arg0, arg1)
+	return &MockApplicationServiceGetApplicationDeploymentTypeCall{Call: call}
+}
+
+// MockApplicationServiceGetApplicationDeploymentTypeCall wrap *gomock.Call
+type MockApplicationServiceGetApplicationDeploymentTypeCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockApplicationServiceGetApplicationDeploymentTypeCall) Return(arg0 string, arg1 error) *MockApplicationServiceGetApplicationDeploymentTypeCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockApplicationServiceGetApplicationDeploymentTypeCall) Do(f func(context.Context, string) (string, error)) *MockApplicationServiceGetApplicationDeploymentTypeCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockApplicationServiceGetApplicationDeploymentTypeCall) DoAndReturn(f func(context.Context, string) (string, error)) *MockApplicationServiceGetApplicationDeploymentTypeCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // GetApplicationLife mocks base method.
 func (m *MockApplicationService) GetApplicationLife(ctx context.Context, id application.UUID) (life.Value, error) {
 	m.ctrl.T.Helper()

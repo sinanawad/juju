@@ -112,6 +112,7 @@ type ProvisioningInfo struct {
 	CharmModifiedVersion int
 	Trust                bool
 	Scale                int
+	DeploymentType       string
 }
 
 // ProvisioningInfo returns the info needed to provision an operator for an application.
@@ -148,6 +149,7 @@ func (c *Client) ProvisioningInfo(ctx context.Context, applicationName string) (
 		CharmModifiedVersion: r.CharmModifiedVersion,
 		Trust:                r.Trust,
 		Scale:                r.Scale,
+		DeploymentType:       r.DeploymentType,
 	}
 
 	for _, device := range r.Devices {

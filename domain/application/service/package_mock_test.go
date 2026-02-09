@@ -919,6 +919,45 @@ func (mr *MockStateMockRecorder) GetApplicationConstraints(ctx, appUUID any) *Mo
 // MockStateGetApplicationConstraintsCall is the typed call wrapper for GetApplicationConstraints.
 type MockStateGetApplicationConstraintsCall = gomock.Call2_2[context.Context, application.UUID, constraints0.Constraints, error]
 
+// GetApplicationDeploymentType mocks base method.
+func (m *MockState) GetApplicationDeploymentType(arg0 context.Context, arg1 string) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetApplicationDeploymentType", arg0, arg1)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetApplicationDeploymentType indicates an expected call of GetApplicationDeploymentType.
+func (mr *MockStateMockRecorder) GetApplicationDeploymentType(arg0, arg1 any) *MockStateGetApplicationDeploymentTypeCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetApplicationDeploymentType", reflect.TypeOf((*MockState)(nil).GetApplicationDeploymentType), arg0, arg1)
+	return &MockStateGetApplicationDeploymentTypeCall{Call: call}
+}
+
+// MockStateGetApplicationDeploymentTypeCall wrap *gomock.Call
+type MockStateGetApplicationDeploymentTypeCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockStateGetApplicationDeploymentTypeCall) Return(arg0 string, arg1 error) *MockStateGetApplicationDeploymentTypeCall {
+	c.Call = c.Call.Return(arg0, arg1)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockStateGetApplicationDeploymentTypeCall) Do(f func(context.Context, string) (string, error)) *MockStateGetApplicationDeploymentTypeCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockStateGetApplicationDeploymentTypeCall) DoAndReturn(f func(context.Context, string) (string, error)) *MockStateGetApplicationDeploymentTypeCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // GetApplicationDetails mocks base method.
 func (m *MockState) GetApplicationDetails(ctx context.Context, appUUID application.UUID) (application0.ApplicationDetails, error) {
 	m.ctrl.T.Helper()

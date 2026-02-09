@@ -104,6 +104,30 @@ func (s *applicationServiceSuite) TestGetApplicationName(c *tc.C) {
 	c.Check(name, tc.Equals, "foo")
 }
 
+func (s *applicationServiceSuite) TestSetApplicationScaleDaemonRejected(c *tc.C) {
+	defer s.setupMocks(c).Finish()
+
+	id := tc.Must(c, coreapplication.NewUUID)
+
+	s.state.EXPECT().GetApplicationUUIDByName(gomock.Any(), "foo").Return(id, nil)
+	s.state.EXPECT().GetApplicationDeploymentType(gomock.Any(), "foo").Return("daemon", nil)
+
+	err := s.service.SetApplicationScale(c.Context(), "foo", 3)
+	c.Assert(err, tc.ErrorIs, applicationerrors.DaemonSetScaleNotSupported)
+}
+
+func (s *applicationServiceSuite) TestChangeApplicationScaleDaemonRejected(c *tc.C) {
+	defer s.setupMocks(c).Finish()
+
+	id := tc.Must(c, coreapplication.NewUUID)
+
+	s.state.EXPECT().GetApplicationUUIDByName(gomock.Any(), "foo").Return(id, nil)
+	s.state.EXPECT().GetApplicationDeploymentType(gomock.Any(), "foo").Return("daemon", nil)
+
+	_, err := s.service.ChangeApplicationScale(c.Context(), "foo", 1)
+	c.Assert(err, tc.ErrorIs, applicationerrors.DaemonSetScaleNotSupported)
+}
+
 func (s *applicationServiceSuite) TestGetApplicationNameNotFound(c *tc.C) {
 	defer s.setupMocks(c).Finish()
 

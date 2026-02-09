@@ -8,6 +8,7 @@ import (
 	"time"
 
 	coreapplication "github.com/juju/juju/core/application"
+	coreerrors "github.com/juju/juju/core/errors"
 	"github.com/juju/juju/core/instance"
 	"github.com/juju/juju/core/model"
 	"github.com/juju/juju/core/network"
@@ -17,6 +18,7 @@ import (
 	"github.com/juju/juju/domain/constraints"
 	"github.com/juju/juju/domain/life"
 	domainstorage "github.com/juju/juju/domain/storage"
+	"github.com/juju/juju/internal/errors"
 )
 
 // entityLife is used to get and describe the the current life value of an
@@ -81,11 +83,49 @@ type applicationName struct {
 }
 
 type setApplicationDetails struct {
-	UUID      string    `db:"uuid"`
-	Name      string    `db:"name"`
-	CharmUUID string    `db:"charm_uuid"`
-	LifeID    life.Life `db:"life_id"`
-	SpaceUUID string    `db:"space_uuid"`
+	UUID             string    `db:"uuid"`
+	Name             string    `db:"name"`
+	CharmUUID        string    `db:"charm_uuid"`
+	LifeID           life.Life `db:"life_id"`
+	SpaceUUID        string    `db:"space_uuid"`
+	DeploymentTypeID int       `db:"deployment_type_id"`
+}
+
+// Deployment type ID constants matching the deployment_type lookup table.
+const (
+	deploymentTypeStateful  = 0
+	deploymentTypeStateless = 1
+	deploymentTypeDaemon    = 2
+)
+
+// encodeDeploymentType converts a deployment type string to its database ID.
+// The empty string maps to stateful, the default for CAAS applications.
+func encodeDeploymentType(dt string) (int, error) {
+	switch dt {
+	case "", "stateful":
+		return deploymentTypeStateful, nil
+	case "stateless":
+		return deploymentTypeStateless, nil
+	case "daemon":
+		return deploymentTypeDaemon, nil
+	default:
+		return 0, errors.Errorf("unknown deployment type %q", dt).Add(coreerrors.NotSupported)
+	}
+}
+
+// decodeDeploymentType converts a database deployment type ID to its string
+// representation.
+func decodeDeploymentType(id int) (string, error) {
+	switch id {
+	case deploymentTypeStateful:
+		return "stateful", nil
+	case deploymentTypeStateless:
+		return "stateless", nil
+	case deploymentTypeDaemon:
+		return "daemon", nil
+	default:
+		return "", errors.Errorf("unknown deployment type ID %d", id).Add(coreerrors.NotSupported)
+	}
 }
 
 type applicationDetails struct {
@@ -95,6 +135,10 @@ type applicationDetails struct {
 	LifeID                 life.Life `db:"life_id"`
 	SpaceUUID              string    `db:"space_uuid"`
 	IsApplicationSynthetic bool      `db:"is_application_synthetic"`
+}
+
+type deploymentTypeResult struct {
+	DeploymentTypeID int `db:"deployment_type_id"`
 }
 
 type applicationScale struct {

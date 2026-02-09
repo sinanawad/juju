@@ -1086,6 +1086,19 @@ func (s *applicationStateSuite) TestCheckApplicationsForMigration(c *tc.C) {
 	// Assert:
 	c.Check(err, tc.ErrorIsNil)
 }
+func (s *applicationStateSuite) TestCheckApplicationsForMigrationDaemonDeployment(c *tc.C) {
+	// Arrange: an application using the daemon deployment type.
+	s.createIAASApplicationWithNUnits(c, "foo", life.Alive, 1)
+	_, err := s.DB().Exec(`UPDATE application SET deployment_type_id = 2 WHERE name = 'foo'`)
+	c.Assert(err, tc.ErrorIsNil)
+
+	// Act:
+	err = s.state.CheckApplicationsForMigration(c.Context())
+
+	// Assert: daemon deployment types cannot round-trip a migration.
+	c.Assert(err, tc.ErrorIs, applicationerrors.DaemonDeploymentMigrationNotSupported)
+}
+
 func (s *applicationStateSuite) TestCheckApplicationsForMigrationUnitUpgrading(c *tc.C) {
 	// Arrange: Some apps with units, add a new charm and update one
 	// application's charm with it.

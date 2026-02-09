@@ -153,6 +153,39 @@ Each user story is independently implementable and testable. Stories are ordered
 
 **Validates**: FR-007 | SC-004
 
+## Pre-Merge Dependencies
+
+### RELEASE BLOCKER: `description/v11` — Add `DeploymentType` to Constraints
+
+The `github.com/juju/description/v11` library serializes model data during migration. Its `ConstraintsArgs` struct and `Constraints` interface do **not** include a `DeploymentType` field. This means:
+
+- The `deployment-type` constraint is silently dropped during export/import
+- **All DaemonSet apps will change workload type after migration** (daemon cannot be re-inferred)
+- Explicitly overridden types (e.g., `stateless` on a charm with storage) are lost
+
+**Mitigation in place**: Import re-infers deployment type from charm metadata when no constraint is available. This correctly handles the common case (inferred stateless/stateful) but cannot recover explicit overrides or `daemon`.
+
+**Required before merge to main**:
+1. PR to `github.com/juju/description` adding `DeploymentType string` to `ConstraintsArgs` and `DeploymentType() string` to `Constraints` interface
+2. Bump `description` dependency in `go.mod`
+3. Update `domain/application/modelmigration/export.go` `exportApplicationConstraints()` to include `DeploymentType`
+4. Update `domain/constraints/modelmigration/decode.go` `DecodeConstraints()` to read `DeploymentType`
+
+**Validates**: FR-013
+
+## K8s Provider: Known Gaps (Pre-Existing)
+
+The K8s provider layer (`internal/provider/kubernetes/application/`) already supports all three deployment types, but the following gaps were identified during substrate analysis. These are **pre-existing** and affect all deployment types — they are not introduced by this feature and are not blockers.
+
+| Gap | Severity | Impact | File |
+|-----|----------|--------|------|
+| `computeStatus()` incomplete | Medium | Returns `NotSupported` for Deployment and DaemonSet; only StatefulSet has full status computation. `juju status` may show less detail for non-StatefulSet workloads. | `application.go` |
+| `Exists()` single-type check | Low | Only checks the resource matching stored deployment type. Won't detect a stray resource of a different type with the same name. | `application.go` |
+| No drift detection | Low | Manual `kubectl` changes to resource type are not detected by Juju. | N/A |
+| No cross-type resource validation | Low | If a wrong resource type exists with the same name, `Exists()` returns false rather than an error. | `application.go` |
+
+**Recommendation**: The `computeStatus()` gap should be addressed in a follow-up PR to provide proper status reporting for Deployment and DaemonSet workloads (computing ready/waiting/blocked from pod conditions). This is independent of the deployment-type selection feature.
+
 ## Complexity Tracking
 
 No constitution violations. All changes use existing patterns.

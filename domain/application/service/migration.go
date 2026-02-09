@@ -361,6 +361,22 @@ func (s *MigrationService) importCAASApplication(
 
 	appArg.Scale = len(args.Units)
 
+	// Determine the deployment type for the migrated application using the
+	// same inference as initial deploy: an explicit constraint wins, then
+	// charms with storage default to stateful and charms without to
+	// stateless.
+	//
+	// NOTE: The description library (v12) does not yet serialize the
+	// deployment-type constraint, so an explicit constraint does not survive
+	// the export/import round-trip and re-inference recovers only the
+	// stateful/stateless cases. Daemon applications cannot be re-inferred,
+	// which is why CheckApplicationsForMigration rejects migration of models
+	// containing them.
+	appArg.DeploymentType = inferDeploymentType(
+		args.ApplicationConstraints.DeploymentType,
+		len(args.Charm.Meta().Storage) > 0,
+	)
+
 	if err := s.st.InsertMigratingApplication(ctx, name, appArg); err != nil {
 		return "", errors.Errorf("creating application %q: %w", name, err)
 	}

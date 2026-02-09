@@ -230,6 +230,7 @@ type MockApplicationServiceMockRecorder struct {
 	mock                                    *MockApplicationService
 	getApplicationCharmOriginExpects        []*gomock.Call2_2[context.Context, string, charm.Origin, error]
 	getApplicationConstraintsExpects        []*gomock.Call2_2[context.Context, application.UUID, constraints.Value, error]
+	getApplicationDeploymentTypeExpects     []*gomock.Call2_2[context.Context, string, string, error]
 	getApplicationLifeByNameExpects         []*gomock.Call2_2[context.Context, string, life.Value, error]
 	getApplicationScaleExpects              []*gomock.Call2_2[context.Context, string, int, error]
 	getApplicationTrustSettingExpects       []*gomock.Call2_2[context.Context, string, bool, error]
@@ -293,6 +294,24 @@ func (mr *MockApplicationServiceMockRecorder) GetApplicationConstraints(ctx, app
 
 // MockApplicationServiceGetApplicationConstraintsCall is the typed call wrapper for GetApplicationConstraints.
 type MockApplicationServiceGetApplicationConstraintsCall = gomock.Call2_2[context.Context, application.UUID, constraints.Value, error]
+
+// GetApplicationDeploymentType mocks base method.
+func (m *MockApplicationService) GetApplicationDeploymentType(ctx context.Context, appName string) (string, error) {
+	m.ctrl.T.Helper()
+	return gomock.Dispatch2_2(&m.recorder.getApplicationDeploymentTypeExpects, m.ctrl, m, "GetApplicationDeploymentType", ctx, appName)
+}
+
+// GetApplicationDeploymentType indicates an expected call of GetApplicationDeploymentType.
+func (mr *MockApplicationServiceMockRecorder) GetApplicationDeploymentType(ctx, appName any) *MockApplicationServiceGetApplicationDeploymentTypeCall {
+	mr.mock.ctrl.T.Helper()
+	call := gomock.NewCall2_2[context.Context, string, string, error](mr.mock.ctrl.T, mr.mock, "GetApplicationDeploymentType", gomock.EnsureMatcher(ctx), gomock.EnsureMatcher(appName))
+	mr.getApplicationDeploymentTypeExpects = append(mr.getApplicationDeploymentTypeExpects, call)
+	mr.mock.ctrl.Track(call.Call)
+	return call
+}
+
+// MockApplicationServiceGetApplicationDeploymentTypeCall is the typed call wrapper for GetApplicationDeploymentType.
+type MockApplicationServiceGetApplicationDeploymentTypeCall = gomock.Call2_2[context.Context, string, string, error]
 
 // GetApplicationLifeByName mocks base method.
 func (m *MockApplicationService) GetApplicationLifeByName(ctx context.Context, appName string) (life.Value, error) {

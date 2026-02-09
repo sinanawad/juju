@@ -98,6 +98,7 @@ func (s *modelSchemaSuite) TestModelTables(c *tc.C) {
 		"application_setting",
 		"application_status",
 		"application_workload_version",
+		"deployment_type",
 		"device_constraint_attribute",
 		"device_constraint",
 		"k8s_service",

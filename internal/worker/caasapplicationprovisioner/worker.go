@@ -116,6 +116,10 @@ type ApplicationService interface {
 	// GetCharmByApplicationUUID returns the charm for the specified application
 	// UUID.
 	GetCharmByApplicationUUID(context.Context, coreapplication.UUID) (internalcharm.Charm, applicationcharm.CharmLocator, error)
+
+	// GetApplicationDeploymentType returns the deployment type for the
+	// specified application ("stateful", "stateless", or "daemon").
+	GetApplicationDeploymentType(ctx context.Context, appName string) (string, error)
 }
 
 // CAASBroker exposes CAAS broker functionality to a worker.

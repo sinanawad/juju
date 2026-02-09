@@ -506,6 +506,12 @@ func (a *API) provisioningInfo(ctx context.Context, appTag names.ApplicationTag)
 	if err != nil {
 		return nil, internalerrors.Capture(err)
 	}
+
+	deploymentType, err := a.applicationService.GetApplicationDeploymentType(ctx, appName)
+	if err != nil {
+		return nil, internalerrors.Capture(err)
+	}
+
 	return &params.CAASApplicationProvisioningInfo{
 		Version:              vers,
 		APIAddresses:         addrs,
@@ -518,6 +524,7 @@ func (a *API) provisioningInfo(ctx context.Context, appTag names.ApplicationTag)
 		CharmModifiedVersion: charmModifiedVersion,
 		Trust:                trustSetting,
 		Scale:                scale,
+		DeploymentType:       deploymentType,
 	}, nil
 }
 

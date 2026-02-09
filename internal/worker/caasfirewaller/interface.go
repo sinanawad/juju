@@ -42,4 +42,8 @@ type ApplicationService interface {
 	// WatchApplications returns a watcher that emits application uuids when
 	// applications are added or removed.
 	WatchApplications(context.Context) (watcher.StringsWatcher, error)
+
+	// GetApplicationDeploymentType returns the deployment type for the
+	// specified application ("stateful", "stateless", or "daemon").
+	GetApplicationDeploymentType(ctx context.Context, appName string) (string, error)
 }

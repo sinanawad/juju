@@ -54,6 +54,7 @@ type CAASApplicationProvisioningInfo struct {
 	CharmModifiedVersion int                      `json:"charm-modified-version,omitempty"`
 	Trust                bool                     `json:"trust,omitempty"`
 	Scale                int                      `json:"scale,omitempty"`
+	DeploymentType       string                   `json:"deployment-type,omitempty"`
 	Error                *Error                   `json:"error,omitempty"`
 }
 

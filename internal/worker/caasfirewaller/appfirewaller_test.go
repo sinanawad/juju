@@ -100,6 +100,7 @@ func (s *appFirewallerSuite) TestWorkerCleanShutdownOnApplicationRemoval(c *tc.C
 
 	appSvcEXP := s.applicationService.EXPECT()
 	appSvcEXP.GetApplicationName(gomock.Any(), appUUID).Return(appName, nil).AnyTimes()
+	appSvcEXP.GetApplicationDeploymentType(gomock.Any(), appName).Return("stateful", nil).AnyTimes()
 
 	portSvcExp := s.portService.EXPECT()
 	portSvcExp.WatchOpenedPortsForApplication(gomock.Any(), appUUID).Return(
@@ -174,6 +175,7 @@ func (s *appFirewallerSuite) TestWorkerPropogatesBrokerNotFoundError(c *tc.C) {
 
 	appSvcEXP := s.applicationService.EXPECT()
 	appSvcEXP.GetApplicationName(gomock.Any(), appUUID).Return(appName, nil).AnyTimes()
+	appSvcEXP.GetApplicationDeploymentType(gomock.Any(), appName).Return("stateful", nil).AnyTimes()
 
 	portSvcExp := s.portService.EXPECT()
 	portSvcExp.WatchOpenedPortsForApplication(gomock.Any(), appUUID).Return(
@@ -244,6 +246,7 @@ func (s *appFirewallerSuite) TestWorkerPortChanges(c *tc.C) {
 	appSvcExp := s.applicationService.EXPECT()
 	appSvcExp.GetApplicationName(gomock.Any(), appUUID).Return(
 		appName, nil).AnyTimes()
+	appSvcExp.GetApplicationDeploymentType(gomock.Any(), appName).Return("stateful", nil).AnyTimes()
 
 	portSvcExp := s.portService.EXPECT()
 	portSvcExp.WatchOpenedPortsForApplication(gomock.Any(), appUUID).Return(
