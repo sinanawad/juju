@@ -309,6 +309,18 @@ const (
 	// UnitsUpgrading describes an error where units are currently in the process
 	// of upgrading. This is relevant for model migration.
 	UnitsUpgrading = errors.ConstError("units upgrading")
+
+	// DeploymentTypeImmutable describes an error that occurs when an attempt
+	// is made to change the deployment type of a running application.
+	DeploymentTypeImmutable = errors.ConstError(
+		"deployment type cannot be changed for a running application; redeploy to use a different workload type",
+	)
+
+	// DaemonSetScaleNotSupported describes an error that occurs when an
+	// attempt is made to manually scale a DaemonSet application.
+	DaemonSetScaleNotSupported = errors.ConstError(
+		"scaling is not supported for DaemonSet applications; scale is determined by the number of cluster nodes",
+	)
 )
 
 const (

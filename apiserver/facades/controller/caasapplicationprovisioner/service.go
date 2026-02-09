@@ -140,6 +140,10 @@ type ApplicationService interface {
 
 	// GetApplicationLifeByName looks up the life of the specified application.
 	GetApplicationLifeByName(ctx context.Context, appName string) (life.Value, error)
+
+	// GetApplicationDeploymentType returns the deployment type for the
+	// specified application ("stateful", "stateless", or "daemon").
+	GetApplicationDeploymentType(ctx context.Context, appName string) (string, error)
 }
 
 // RemovalService defines operations for removing juju entities.

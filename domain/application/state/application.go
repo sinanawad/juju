@@ -101,7 +101,7 @@ func (st *State) CreateIAASApplication(
 
 	var machineNames []coremachine.Name
 	err = db.Txn(ctx, func(ctx context.Context, tx *sqlair.TX) error {
-		if err := st.insertApplication(ctx, tx, name, appUUIDStr, args.BaseAddApplicationArg); err != nil {
+		if err := st.insertApplication(ctx, tx, name, appUUIDStr, args.BaseAddApplicationArg, 0); err != nil {
 			return errors.Errorf("inserting IAAS application %q: %w", name, err)
 		}
 
@@ -162,8 +162,10 @@ func (st *State) CreateCAASApplication(
 		return "", errors.Capture(err)
 	}
 
+	deploymentTypeID := encodeDeploymentType(args.DeploymentType)
+
 	err = db.Txn(ctx, func(ctx context.Context, tx *sqlair.TX) error {
-		if err := st.insertApplication(ctx, tx, name, appUUIDStr, args.BaseAddApplicationArg); err != nil {
+		if err := st.insertApplication(ctx, tx, name, appUUIDStr, args.BaseAddApplicationArg, deploymentTypeID); err != nil {
 			return errors.Errorf("inserting CAAS application %q: %w", name, err)
 		}
 
@@ -199,6 +201,7 @@ func (st *State) insertApplication(
 	tx *sqlair.TX,
 	name, appUUID string,
 	args application.BaseAddApplicationArg,
+	deploymentTypeID int,
 ) error {
 	charmID, err := corecharm.NewID()
 	if err != nil {
@@ -225,7 +228,8 @@ func (st *State) insertApplication(
 		// of application_endpoints.
 		// The space defined here will be used as default space when creating
 		// relation where application_endpoint doesn't have a defined space.
-		SpaceUUID: defaultSpaceUUID,
+		SpaceUUID:        defaultSpaceUUID,
+		DeploymentTypeID: deploymentTypeID,
 	}
 
 	createApplication := `INSERT INTO application (*) VALUES ($setApplicationDetails.*)`
@@ -575,6 +579,40 @@ WHERE a.uuid = $entityUUID.uuid;
 		return -1, errors.Capture(err)
 	}
 	return life.LifeID, nil
+}
+
+// GetApplicationDeploymentType returns the deployment type for the specified
+// application as a string ("stateful", "stateless", or "daemon").
+// Returns an error satisfying [applicationerrors.ApplicationNotFound] if the
+// application is not found.
+func (st *State) GetApplicationDeploymentType(ctx context.Context, appName string) (string, error) {
+	db, err := st.DB(ctx)
+	if err != nil {
+		return "", errors.Capture(err)
+	}
+
+	name := entityName{Name: appName}
+	var dtID deploymentTypeResult
+	stmt, err := st.Prepare(`
+SELECT a.deployment_type_id AS &deploymentTypeResult.deployment_type_id
+FROM application AS a
+WHERE a.name = $entityName.name;
+`, dtID, name)
+	if err != nil {
+		return "", errors.Capture(err)
+	}
+
+	err = db.Txn(ctx, func(ctx context.Context, tx *sqlair.TX) error {
+		err := tx.Query(ctx, stmt, name).Get(&dtID)
+		if errors.Is(err, sqlair.ErrNoRows) {
+			return errors.Errorf("application %q not found", appName).Add(applicationerrors.ApplicationNotFound)
+		}
+		return errors.Capture(err)
+	})
+	if err != nil {
+		return "", errors.Capture(err)
+	}
+	return decodeDeploymentType(dtID.DeploymentTypeID), nil
 }
 
 // GetApplicationDetails returns the details of the specified application,

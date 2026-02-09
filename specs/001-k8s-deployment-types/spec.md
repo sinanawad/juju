@@ -106,6 +106,7 @@ As an operator managing multiple applications across a Kubernetes model, I want 
 - What happens when an operator tries to change the workload type of an already-running application? The system should reject this with a clear error, as changing workload types requires a full redeployment (this is a destructive operation).
 - What happens when constraints are set at the model level for deployment-type? The system should apply the model-level constraint as a default for new deployments within that model, overridable per-application.
 - What happens during a controller upgrade when existing applications have no workload type recorded? The system should default existing applications to StatefulSet to preserve current behavior.
+- What happens when a CAAS model is migrated between controllers? The deployment type must survive the migration. For inferred types (no explicit constraint), the import side must re-infer from charm metadata. For explicit constraints (including `daemon`), the serialization layer (`description/v11`) must carry the `deployment-type` field through the export/import round-trip.
 
 ## Requirements *(mandatory)*
 
@@ -123,6 +124,7 @@ As an operator managing multiple applications across a Kubernetes model, I want 
 - **FR-010**: System MUST persist the workload type for each application so that it survives controller restarts and upgrades.
 - **FR-011**: System MUST default existing applications (deployed before this feature) to the StatefulSet workload type during upgrades, with no disruption to running workloads.
 - **FR-012**: System MUST issue a warning when an operator deploys with `deployment-type=stateless` but the charm declares persistent storage requirements.
+- **FR-013**: System MUST preserve the deployment type of CAAS applications during model migration. Inferred types must be re-derived from charm metadata on import. Explicitly constrained types (including `daemon`) require the `description` serialization library to support the `deployment-type` constraint field.
 
 ### Key Entities
 

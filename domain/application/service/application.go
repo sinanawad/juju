@@ -104,6 +104,11 @@ type ApplicationState interface {
 	// found.
 	GetApplicationLifeByName(ctx context.Context, appName string) (coreapplication.UUID, life.Life, error)
 
+	// GetApplicationDeploymentType returns the deployment type for the
+	// specified application, returning an error satisfying
+	// [applicationerrors.ApplicationNotFound] if the application is not found.
+	GetApplicationDeploymentType(ctx context.Context, appName string) (string, error)
+
 	// GetApplicationDetails returns the application details for the given
 	// appUUID. This includes the life status and the name of the application.
 	// Returns an error satisfying [applicationerrors.ApplicationNotFound] if
@@ -980,6 +985,21 @@ func (s *Service) GetApplicationLifeByName(ctx context.Context, appName string) 
 		return "", errors.Errorf("getting life for %q: %w", appName, err)
 	}
 	return appLife.Value()
+}
+
+// GetApplicationDeploymentType returns the deployment type for the specified
+// application.
+// The following errors may be returned:
+// - [applicationerrors.ApplicationNotFound] if the application is not found.
+func (s *Service) GetApplicationDeploymentType(ctx context.Context, appName string) (string, error) {
+	ctx, span := trace.Start(ctx, trace.NameFromFunc())
+	defer span.End()
+
+	dt, err := s.st.GetApplicationDeploymentType(ctx, appName)
+	if err != nil {
+		return "", errors.Errorf("getting deployment type for %q: %w", appName, err)
+	}
+	return dt, nil
 }
 
 // GetApplicationDetails looks up the details of the specified application,

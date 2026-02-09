@@ -620,9 +620,10 @@ func (s *migrationServiceSuite) TestImportCAASApplication(c *tc.C) {
 	}).MinTimes(1)
 
 	args := application.InsertApplicationArgs{
-		Charm:    ch,
-		Platform: platform,
-		Scale:    1,
+		Charm:          ch,
+		Platform:       platform,
+		Scale:          1,
+		DeploymentType: "stateless",
 		Config: map[string]application.AddApplicationConfig{
 			"foo": {
 				Type:  domaincharm.OptionString,

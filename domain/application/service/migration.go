@@ -405,6 +405,22 @@ func (s *MigrationService) importCAASApplication(
 
 	appArg.Scale = len(args.Units)
 
+	// Determine the deployment type for the migrated application.
+	// Prefer the explicit constraint value. If not set, re-infer from
+	// charm metadata using the same logic as initial deploy: charms with
+	// persistent storage default to "stateful", charms without default
+	// to "stateless".
+	//
+	// NOTE: The description/v11 serialization library does not yet support
+	// the deployment-type constraint field, so explicit constraints may
+	// not survive the export/import round-trip. Re-inference ensures the
+	// correct deployment type is preserved for the common cases.
+	if dt := args.ApplicationConstraints.DeploymentType; dt != nil {
+		appArg.DeploymentType = *dt
+	} else if len(args.Charm.Meta().Storage) == 0 {
+		appArg.DeploymentType = "stateless"
+	}
+
 	appID, err := s.st.InsertMigratingApplication(ctx, name, appArg)
 	if err != nil {
 		return "", "", errors.Errorf("creating application %q: %w", name, err)

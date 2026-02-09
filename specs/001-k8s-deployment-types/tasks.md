@@ -17,8 +17,8 @@
 
 **Purpose**: Database schema changes and core type additions that all stories depend on.
 
-- [ ] T001 Create DB PATCH file with `deployment_type` lookup table and `deployment_type_id` column on `application` table in `domain/schema/model/sql/NNNN-deployment-type.PATCH.sql`
-- [ ] T002 Register new PATCH file in `domain/schema/model.go` via `modelPostPatchFilesByVersion`
+- [x] T001 Create DB PATCH file with `deployment_type` lookup table and `deployment_type_id` column on `application` table in `domain/schema/model/sql/0046-deployment-type.PATCH.sql`
+- [x] T002 Register new PATCH file in `domain/schema/model.go` via `modelPostPatchFilesByVersion`
 
 **Checkpoint**: Schema changes ready — domain and upper layers can now reference deployment type.
 
@@ -30,11 +30,11 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete.
 
-- [ ] T003 [P] Add `DeploymentType *string` field to `Value` struct in `core/constraints/constraints.go` with parsing, validation (values: `stateless`, `stateful`, `daemon`), and serialization support
-- [ ] T004 [P] Add `DeploymentType` field to `AddCAASApplicationArg` struct in `domain/application/types.go`
-- [ ] T005 Map new `deployment-type` constraint in `domain/constraints/constraints.go`
-- [ ] T006 Persist `deployment_type_id` during `CreateCAASApplication` in `domain/application/state/application.go` (read from `AddCAASApplicationArg`, map to lookup table ID, INSERT into `application` row)
-- [ ] T007 Add `GetApplicationDeploymentType(ctx, appName) (string, error)` method to application service in `domain/application/service/application.go` (query `deployment_type` join from `application` table)
+- [x] T003 [P] Add `DeploymentType *string` field to `Value` struct in `core/constraints/constraints.go` with parsing, validation (values: `stateless`, `stateful`, `daemon`), and serialization support
+- [x] T004 [P] Add `DeploymentType` field to `AddCAASApplicationArg` struct in `domain/application/types.go`
+- [x] T005 Map new `deployment-type` constraint in `domain/constraints/constraints.go`
+- [x] T006 Persist `deployment_type_id` during `CreateCAASApplication` in `domain/application/state/application.go` (read from `AddCAASApplicationArg`, map to lookup table ID, INSERT into `application` row)
+- [x] T007 Add `GetApplicationDeploymentType(ctx, appName) (string, error)` method to application service in `domain/application/service/application.go` (query `deployment_type` join from `application` table)
 
 **Checkpoint**: Foundation ready — constraint parsing, persistence, and retrieval all functional. User story implementation can now begin.
 
@@ -50,37 +50,37 @@
 
 ### Wire Types & API Versioning
 
-- [ ] T008 [P] [US1+2+4] Add `DeploymentType string` field to `CAASApplicationProvisioningInfo` struct in `rpc/params/caas.go` (or the file containing this struct) with JSON tag `"deployment-type,omitempty"`
-- [ ] T009 [P] [US1+2+4] Bump CAASApplicationProvisioner facade version from v1 to v2 in `apiserver/facades/controller/caasapplicationprovisioner/register.go`
-- [ ] T010 [P] [US1+2+4] Update client facade version for `CAASApplicationProvisioner` to 2 in `api/facadeversions.go`
+- [x] T008 [P] [US1+2+4] Add `DeploymentType string` field to `CAASApplicationProvisioningInfo` struct in `rpc/params/caas.go` (or the file containing this struct) with JSON tag `"deployment-type,omitempty"`
+- [x] T009 [P] [US1+2+4] Bump CAASApplicationProvisioner facade version from v1 to v2 in `apiserver/facades/controller/caasapplicationprovisioner/register.go`
+- [x] T010 [P] [US1+2+4] Update client facade version for `CAASApplicationProvisioner` to 2 in `api/facadeversions.go`
 
 ### Facade: Populate Deployment Type in Provisioning Info
 
-- [ ] T011 [US1+2+4] Populate `DeploymentType` field in provisioning info response by calling `GetApplicationDeploymentType()` in `apiserver/facades/controller/caasapplicationprovisioner/provisioner.go` (within the ProvisioningInfo assembly method)
+- [x] T011 [US1+2+4] Populate `DeploymentType` field in provisioning info response by calling `GetApplicationDeploymentType()` in `apiserver/facades/controller/caasapplicationprovisioner/provisioner.go` (within the ProvisioningInfo assembly method)
 
 ### API Client: Parse New Field
 
-- [ ] T012 [US1+2+4] Parse `DeploymentType` from provisioning info response in `api/controller/caasapplicationprovisioner/client.go`
+- [x] T012 [US1+2+4] Parse `DeploymentType` from provisioning info response in `api/controller/caasapplicationprovisioner/client.go`
 
 ### Worker: Dynamic Deployment Type Selection
 
-- [ ] T013 [US1+2+4] Implement `DetermineDeploymentType(constraint *string, hasStorage bool) caas.DeploymentType` function in `internal/worker/caasapplicationprovisioner/ops.go` — logic: (1) if constraint set → map to caas type, (2) if charm has storage → `DeploymentStateful`, (3) else → `DeploymentStateless`
-- [ ] T014 [US1+2+4] Replace hardcoded `caas.DeploymentStateful` with call to `DetermineDeploymentType()` using provisioning info in `internal/worker/caasapplicationprovisioner/application.go:149`
-- [ ] T015 [US1+2+4] Replace hardcoded `caas.DeploymentStateful` with deployment type from state in `internal/worker/caasfirewaller/appfirewaller.go:81`
+- [x] T013 [US1+2+4] Implement `DetermineDeploymentType(constraint *string, hasStorage bool) caas.DeploymentType` function in `internal/worker/caasapplicationprovisioner/ops.go` — logic: (1) if constraint set → map to caas type, (2) if charm has storage → `DeploymentStateful`, (3) else → `DeploymentStateless`
+- [x] T014 [US1+2+4] Replace hardcoded `caas.DeploymentStateful` with call to `DetermineDeploymentType()` using provisioning info in `internal/worker/caasapplicationprovisioner/application.go:149`
+- [x] T015 [US1+2+4] Replace hardcoded `caas.DeploymentStateful` with deployment type from state in `internal/worker/caasfirewaller/appfirewaller.go:81`
 
 ### Domain: Replace Hardcoded StatefulSet in Provider Service
 
-- [ ] T016 [P] [US1+2+4] Replace hardcoded `caas.DeploymentStateful` at line 442 in `domain/application/service/provider.go` with deployment type read from application state
-- [ ] T017 [P] [US1+2+4] Replace hardcoded `caas.DeploymentStateful` at line 538 in `domain/application/service/provider.go` with deployment type read from application state
+- [x] T016 [P] [US1+2+4] Replace hardcoded `caas.DeploymentStateful` at line 442 in `domain/application/service/provider.go` with deployment type read from application state
+- [x] T017 [P] [US1+2+4] Replace hardcoded `caas.DeploymentStateful` at line 538 in `domain/application/service/provider.go` with deployment type read from application state
 
 ### Immutability Enforcement (FR-006)
 
-- [ ] T018 [US1+2+4] Add `DeploymentTypeImmutable` error constant to `domain/application/errors/errors.go` with message: "deployment type cannot be changed for a running application; redeploy to use a different workload type"
-- [ ] T019 [US1+2+4] Add deployment type immutability check in `domain/application/service/provider.go` — when `SetApplicationConstraints` is called, if the new constraints include `deployment-type` and differ from the persisted value, return `DeploymentTypeImmutable` error
+- [x] T018 [US1+2+4] Add `DeploymentTypeImmutable` error constant to `domain/application/errors/errors.go` with message: "deployment type cannot be changed for a running application; redeploy to use a different workload type"
+- [x] T019 [US1+2+4] Add deployment type immutability check in `domain/application/service/provider.go` — when `SetApplicationConstraints` is called, if the new constraints include `deployment-type` and differ from the persisted value, return `DeploymentTypeImmutable` error
 
 ### Warning for Storage Mismatch (FR-012)
 
-- [ ] T020 [US1+2+4] Add warning log when `deployment-type=stateless` but charm declares persistent storage, emitted during deploy in the worker or domain service layer (exact location: near `DetermineDeploymentType` usage in `internal/worker/caasapplicationprovisioner/application.go`)
+- [x] T020 [US1+2+4] Add warning log when `deployment-type=stateless` but charm declares persistent storage, emitted during deploy in the worker or domain service layer (exact location: near `DetermineDeploymentType` usage in `internal/worker/caasapplicationprovisioner/application.go`)
 
 **Checkpoint**: At this point, deploying charms with any workload type works end-to-end. Existing charms continue as StatefulSet. Constraint validation, inference, persistence, and provisioning all functional.
 
@@ -135,7 +135,31 @@
 
 ---
 
-## Phase 6: Polish & Cross-Cutting Concerns
+## Phase 6: Migration Support (Priority: P1 — Release Blocker)
+
+**Goal**: Deployment type survives model migration between controllers.
+
+**Depends on**: Phase 3 (deployment type must be persisted and queryable)
+
+### Implemented (in-tree)
+
+- [x] T036 [P] [Migration] Fix YAML constraint validation bypass — route `UnmarshalYAML` through `setDeploymentType()` in `core/constraints/constraints.go`
+- [x] T037 [P] [Migration] Add `DeploymentType string` field to `InsertApplicationArgs` in `domain/application/types.go`
+- [x] T038 [Migration] Set `DeploymentTypeID` from `args.DeploymentType` in `InsertMigratingApplication` in `domain/application/state/migration.go`
+- [x] T039 [Migration] Re-infer deployment type from charm metadata during CAAS import when no explicit constraint is set in `domain/application/service/migration.go`
+
+### External Dependency (RELEASE BLOCKER)
+
+- [ ] T040 [Migration] PR to `github.com/juju/description`: add `DeploymentType string` to `ConstraintsArgs` and `DeploymentType() string` to `Constraints` interface
+- [ ] T041 [Migration] Bump `description` dependency in `go.mod` after T040 merges
+- [ ] T042 [Migration] Update `exportApplicationConstraints()` in `domain/application/modelmigration/export.go` to include `DeploymentType` field
+- [ ] T043 [Migration] Update `DecodeConstraints()` in `domain/constraints/modelmigration/decode.go` to read `DeploymentType` from description constraints
+
+**Checkpoint**: After T040–T043, all deployment types (including explicit `daemon` and constraint overrides) survive migration round-trip. Without T040–T043, only inferred stateless/stateful types are preserved.
+
+---
+
+## Phase 7: Polish & Cross-Cutting Concerns
 
 **Purpose**: Validation, cleanup, and verification across all stories.
 
@@ -157,7 +181,8 @@
 - **Story 1+2+4 (Phase 3)**: Depends on Phase 2 (constraint + domain types must exist)
 - **Story 3 (Phase 4)**: Depends on Phase 3 (deployment type must be persistable/queryable)
 - **Story 5 (Phase 5)**: Depends on Phase 3 (deployment type must be persisted)
-- **Polish (Phase 6)**: Depends on all story phases being complete
+- **Migration (Phase 6)**: Depends on Phase 3; T040–T043 are a **release blocker** (external dep on `description` library)
+- **Polish (Phase 7)**: Depends on all story phases being complete
 
 ### User Story Dependencies
 
@@ -166,8 +191,9 @@ Phase 1 (Setup)
     └──> Phase 2 (Foundational)
               └──> Phase 3 (US1+2+4: Core feature) 🎯 MVP
                         ├──> Phase 4 (US3: DaemonSet scale blocking)
-                        └──> Phase 5 (US5: Status visibility)
-                                    └──> Phase 6 (Polish)
+                        ├──> Phase 5 (US5: Status visibility)
+                        └──> Phase 6 (Migration) ⚠️ T040-T043 = RELEASE BLOCKER
+                                    └──> Phase 7 (Polish)
 ```
 
 - **Story 3 and Story 5 are independent of each other** — they can run in parallel after Phase 3
@@ -243,3 +269,7 @@ Phase 5 (US5: T023-T029)  ─┘── parallel (different layers, no dependenci
 - Edge case 2 (DaemonSet + non-shared storage access mode): Deferred — the provider layer
   already uses standalone PVCs for DaemonSets (`handlePVCForStatelessResource`), avoiding the
   identity-dependent VolumeClaimTemplate pattern. No additional validation needed for MVP.
+- **K8s provider gaps (pre-existing, not blockers)**: `computeStatus()` only fully implemented
+  for StatefulSet (returns `NotSupported` for Deployment/DaemonSet); `Exists()` only checks the
+  stored deployment type (no cross-type detection); no drift detection for manual kubectl edits.
+  These should be addressed in a follow-up PR, not in this feature branch.

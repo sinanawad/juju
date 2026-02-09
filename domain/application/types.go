@@ -88,6 +88,10 @@ type AddCAASApplicationArg struct {
 	BaseAddApplicationArg
 	// Scale contains the scale information for the application.
 	Scale int
+	// DeploymentType contains the deployment type for the CAAS application.
+	// Valid values are "stateless", "stateful", "daemon". If empty, defaults
+	// to "stateful" for backward compatibility.
+	DeploymentType string
 }
 
 // AddApplicationResourceArg defines the arguments required to add a resource to
@@ -474,6 +478,9 @@ type InsertApplicationArgs struct {
 	Settings ApplicationSettings
 	// Scale contains the scale information for the application.
 	Scale int
+	// DeploymentType contains the deployment type for a CAAS application
+	// (e.g. "stateful", "stateless", "daemon"). Empty for IAAS applications.
+	DeploymentType string
 	// StoragePoolKind holds a mapping of the kind of storage supported
 	// by the named storage pool / provider type.
 	StoragePoolKind map[string]internalstorage.StorageKind

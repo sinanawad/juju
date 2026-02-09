@@ -145,8 +145,14 @@ func (a *appWorker) loop() error {
 		return errors.Annotatef(err, "fetching info for application %q", a.appUUID)
 	}
 
-	// TODO(sidecar): support more than statefulset
-	app := a.broker.Application(name, caas.DeploymentStateful)
+	deploymentTypeStr, err := a.applicationService.GetApplicationDeploymentType(ctx, name)
+	if errors.Is(err, applicationerrors.ApplicationNotFound) {
+		a.logger.Debugf(ctx, "application %q no longer exists", name)
+		return nil
+	} else if err != nil {
+		return errors.Annotatef(err, "fetching deployment type for application %q", name)
+	}
+	app := a.broker.Application(name, caas.DeploymentType(deploymentTypeStr))
 
 	// If the application no longer exists, return immediately. If it's in
 	// Dead state, ensure it's deleted and terminated.

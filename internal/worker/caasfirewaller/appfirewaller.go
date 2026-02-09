@@ -78,7 +78,11 @@ func (w *appFirewaller) getPortMutator(ctx context.Context) (PortMutator, error)
 		return nil, errors.Errorf("getting application %q name: %w", w.appUUID, err)
 	}
 
-	app := w.broker.Application(appName, caas.DeploymentStateful)
+	deploymentTypeStr, err := w.applicationService.GetApplicationDeploymentType(ctx, appName)
+	if err != nil {
+		return nil, errors.Errorf("getting deployment type for application %q: %w", appName, err)
+	}
+	app := w.broker.Application(appName, caas.DeploymentType(deploymentTypeStr))
 	return app, nil
 }
 

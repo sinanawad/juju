@@ -1,28 +1,15 @@
 <!--
   Sync Impact Report
   ==================
-  Version change: 1.1.0 → 1.2.0
-  Modified principles:
-    - II: "Strict Architectural Layering" — CLARIFIED
-      Updated import hierarchy to reflect that api/ and core/ may
-      import domain/deployment/charm (shared type packages). Added
-      known exceptions note for internal/worker/ → cmd/ (2 files).
-    - III: "Managed Concurrency" — CLARIFIED
-      Added note that request-scoped goroutines in API handlers may
-      use context-based cancellation as an alternative to tomb/catacomb.
-    - VI: "Access to Clouds via Providers" — CLARIFIED
-      Updated to reflect that cmd/ (CLI) may import provider packages
-      for registration, constants, and bootstrap. Added known exception
-      for domain/modelprovider importing a provider constant.
-  Added sections:
-    - "Codebase Verification" section under Governance with test results
+  Version change: 1.2.0 → 1.2.1
+  Modified principles: None
+  Added constraints:
+    - "Migration serialization boundary" in Architectural Constraints.
+      New persisted fields must survive the description library
+      round-trip or have documented re-derivation strategies.
+      Motivated by k8s deployment-type migration gap analysis.
   Removed sections: None
-  Templates requiring updates:
-    - .specify/templates/plan-template.md — ✅ no update needed
-    - .specify/templates/spec-template.md — ✅ no update needed
-    - .specify/templates/tasks-template.md — ✅ no update needed
-    - .specify/templates/checklist-template.md — ✅ no update needed
-    - .specify/templates/agent-file-template.md — ✅ no update needed
+  Templates requiring updates: None
   Follow-up TODOs: None
 
   History:
@@ -32,6 +19,8 @@
     1.1.0 → 1.2.0: Codebase verification audit (2026-02-08).
       Clarified II, III, VI to reflect known exceptions.
       Added Codebase Verification section with test results.
+    1.2.0 → 1.2.1: Added migration serialization boundary constraint
+      from deployment-type lifecycle audit (2026-02-08).
 -->
 
 # Juju Constitution
@@ -189,6 +178,11 @@ burden for all contributors.
   construction in state packages
 - **API protocol**: RPC facades with bulk arguments (accept and
   return arrays, process all items)
+- **Migration serialization boundary**: New persisted fields MUST
+  survive the model migration round-trip through the `description`
+  library. If the `description` library lacks support for a new
+  field, it MUST be added before the feature ships, or an
+  equivalent re-derivation strategy MUST be documented and tested
 - **Watcher contract**: Watchers MUST send an initial event
   indicating baseline state; clients read full state on every event
 - **Import grouping**: stdlib, 3rd-party, juju — each
@@ -254,4 +248,4 @@ Results:
 | VII. Resource Ownership | Design principle | Not statically testable |
 | VIII. Simplicity and Minimalism | Design principle | Not statically testable |
 
-**Version**: 1.2.0 | **Ratified**: 2026-02-06 | **Last Amended**: 2026-02-08
+**Version**: 1.2.1 | **Ratified**: 2026-02-06 | **Last Amended**: 2026-02-08

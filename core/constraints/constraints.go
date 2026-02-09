@@ -37,6 +37,7 @@ const (
 	Zones            = "zones"
 	AllocatePublicIP = "allocate-public-ip"
 	ImageID          = "image-id"
+	DeploymentType   = "deployment-type"
 
 	// excludedPrefix is the prefix Juju expects to be in front of a value when
 	// it is to be considered excluded as part of constraints.
@@ -120,6 +121,12 @@ type Value struct {
 	// image. This is provider specific, and for the moment is only
 	// implemented on MAAS clouds.
 	ImageID *string `json:"image-id,omitempty" yaml:"image-id,omitempty"`
+
+	// DeploymentType, if not nil or empty, indicates the Kubernetes workload
+	// type to use for a CAAS application. Valid values are "stateless"
+	// (Deployment), "stateful" (StatefulSet), or "daemon" (DaemonSet).
+	// Only meaningful for CAAS models; silently ignored for IAAS models.
+	DeploymentType *string `json:"deployment-type,omitempty" yaml:"deployment-type,omitempty"`
 }
 
 var rawAliases = map[string]string{
@@ -264,6 +271,12 @@ func (v *Value) HasImageID() bool {
 	return v.ImageID != nil && *v.ImageID != ""
 }
 
+// HasDeploymentType returns true if the constraints.Value specifies a
+// deployment-type.
+func (v *Value) HasDeploymentType() bool {
+	return v.DeploymentType != nil && *v.DeploymentType != ""
+}
+
 // String expresses a constraints.Value in the language in which it was specified.
 func (v Value) String() string {
 	var strs []string
@@ -323,6 +336,9 @@ func (v Value) String() string {
 	}
 	if v.ImageID != nil {
 		strs = append(strs, "image-id="+(*v.ImageID))
+	}
+	if v.DeploymentType != nil {
+		strs = append(strs, "deployment-type="+(*v.DeploymentType))
 	}
 
 	// Ensure constraint values with spaces are properly escaped
@@ -384,6 +400,9 @@ func (v Value) GoString() string {
 	}
 	if v.ImageID != nil {
 		values = append(values, fmt.Sprintf("ImageID: %q", *v.ImageID))
+	}
+	if v.DeploymentType != nil {
+		values = append(values, fmt.Sprintf("DeploymentType: %q", *v.DeploymentType))
 	}
 	return fmt.Sprintf("{%s}", strings.Join(values, ", "))
 }
@@ -560,6 +579,8 @@ func (v *Value) setRaw(name, str string) error {
 		err = v.setAllocatePublicIP(str)
 	case ImageID:
 		err = v.setImageID(str)
+	case DeploymentType:
+		err = v.setDeploymentType(str)
 	default:
 		return errors.Errorf("unknown constraint %q", name)
 	}
@@ -633,6 +654,8 @@ func (v *Value) UnmarshalYAML(unmarshal func(interface{}) error) error {
 			v.AllocatePublicIP, err = parseBool(vstr)
 		case ImageID:
 			v.ImageID = &vstr
+		case DeploymentType:
+			err = v.setDeploymentType(vstr)
 		default:
 			return errors.Errorf("unknown constraint value: %v", k)
 		}
@@ -798,6 +821,19 @@ func (v *Value) setImageID(str string) (err error) {
 	}
 	v.ImageID = &str
 	return
+}
+
+func (v *Value) setDeploymentType(str string) error {
+	if v.DeploymentType != nil {
+		return errors.Errorf("already set")
+	}
+	switch str {
+	case "stateless", "stateful", "daemon":
+	default:
+		return errors.Errorf("invalid deployment type %q: must be one of stateless, stateful, daemon", str)
+	}
+	v.DeploymentType = &str
+	return nil
 }
 
 func parseBool(str string) (*bool, error) {

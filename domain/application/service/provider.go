@@ -264,6 +264,23 @@ func (s *ProviderService) SetApplicationConstraints(
 		return err
 	}
 
+	// Enforce deployment type immutability: if the new constraints include
+	// a deployment-type that differs from the persisted value, reject the
+	// change.
+	if cons.HasDeploymentType() {
+		appDetails, err := s.st.GetApplicationDetails(ctx, appID)
+		if err != nil {
+			return errors.Errorf("checking deployment type immutability: %w", err)
+		}
+		currentDT, err := s.st.GetApplicationDeploymentType(ctx, appDetails.Name)
+		if err != nil {
+			return errors.Errorf("checking deployment type immutability: %w", err)
+		}
+		if *cons.DeploymentType != currentDT {
+			return applicationerrors.DeploymentTypeImmutable
+		}
+	}
+
 	return s.st.SetApplicationConstraints(ctx, appID, constraints.DecodeConstraints(cons))
 }
 
@@ -437,9 +454,12 @@ func (s *ProviderService) CAASUnitTerminating(ctx context.Context, unitNameStr s
 		return false, errors.Errorf("terminating k8s unit %s/%q: %w", appName, unitNum, err)
 	}
 
-	// We currently only support statefulset.
 	restart := true
-	caasApp := caasApplicationProvider.Application(appName, caas.DeploymentStateful)
+	deploymentTypeStr, err := s.st.GetApplicationDeploymentType(ctx, appName)
+	if err != nil {
+		return false, errors.Errorf("getting deployment type for application %q: %w", appName, err)
+	}
+	caasApp := caasApplicationProvider.Application(appName, caas.DeploymentType(deploymentTypeStr))
 	appState, err := caasApp.State()
 	if err != nil {
 		return false, errors.Capture(err)
@@ -535,7 +555,11 @@ func (s *ProviderService) RegisterCAASUnit(
 	if err != nil {
 		return "", "", errors.Errorf("registering k8s units for application %q: %w", appName, err)
 	}
-	caasApp := caasApplicationProvider.Application(appName, caas.DeploymentStateful)
+	deploymentTypeStr, err := s.st.GetApplicationDeploymentType(ctx, appName)
+	if err != nil {
+		return "", "", errors.Errorf("getting deployment type for application %q: %w", appName, err)
+	}
+	caasApp := caasApplicationProvider.Application(appName, caas.DeploymentType(deploymentTypeStr))
 	pods, err := caasApp.Units()
 	if err != nil {
 		return "", "", errors.Errorf("finding k8s units for application %q: %w", appName, err)
@@ -708,9 +732,17 @@ func (s *ProviderService) makeCAASApplicationArg(
 	if err != nil {
 		return "", application.AddCAASApplicationArg{}, nil, errors.Errorf("preparing CAAS application args: %w", err)
 	}
+	// Determine the deployment type from constraints or infer from charm storage.
+	deploymentType := "stateful"
+	if cons.DeploymentType != nil {
+		deploymentType = *cons.DeploymentType
+	} else if len(charm.Meta().Storage) == 0 {
+		deploymentType = "stateless"
+	}
 	addCAASApplicationArg := application.AddCAASApplicationArg{
 		BaseAddApplicationArg: arg,
 		Scale:                 len(units),
+		DeploymentType:        deploymentType,
 	}
 
 	storageDirectives := storage.MakeStorageDirectiveFromApplicationArg(
