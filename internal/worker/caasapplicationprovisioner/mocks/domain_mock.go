@@ -49,6 +49,44 @@ func (m *MockApplicationService) EXPECT() *MockApplicationServiceMockRecorder {
 	return m.recorder
 }
 
+// ClearCAASUnitCloudContainer mocks base method.
+func (m *MockApplicationService) ClearCAASUnitCloudContainer(arg0 context.Context, arg1 unit.Name) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ClearCAASUnitCloudContainer", arg0, arg1)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ClearCAASUnitCloudContainer indicates an expected call of ClearCAASUnitCloudContainer.
+func (mr *MockApplicationServiceMockRecorder) ClearCAASUnitCloudContainer(arg0, arg1 any) *MockApplicationServiceClearCAASUnitCloudContainerCall {
+	mr.mock.ctrl.T.Helper()
+	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClearCAASUnitCloudContainer", reflect.TypeOf((*MockApplicationService)(nil).ClearCAASUnitCloudContainer), arg0, arg1)
+	return &MockApplicationServiceClearCAASUnitCloudContainerCall{Call: call}
+}
+
+// MockApplicationServiceClearCAASUnitCloudContainerCall wrap *gomock.Call
+type MockApplicationServiceClearCAASUnitCloudContainerCall struct {
+	*gomock.Call
+}
+
+// Return rewrite *gomock.Call.Return
+func (c *MockApplicationServiceClearCAASUnitCloudContainerCall) Return(arg0 error) *MockApplicationServiceClearCAASUnitCloudContainerCall {
+	c.Call = c.Call.Return(arg0)
+	return c
+}
+
+// Do rewrite *gomock.Call.Do
+func (c *MockApplicationServiceClearCAASUnitCloudContainerCall) Do(f func(context.Context, unit.Name) error) *MockApplicationServiceClearCAASUnitCloudContainerCall {
+	c.Call = c.Call.Do(f)
+	return c
+}
+
+// DoAndReturn rewrite *gomock.Call.DoAndReturn
+func (c *MockApplicationServiceClearCAASUnitCloudContainerCall) DoAndReturn(f func(context.Context, unit.Name) error) *MockApplicationServiceClearCAASUnitCloudContainerCall {
+	c.Call = c.Call.DoAndReturn(f)
+	return c
+}
+
 // GetAllUnitCloudContainerIDsForApplication mocks base method.
 func (m *MockApplicationService) GetAllUnitCloudContainerIDsForApplication(arg0 context.Context, arg1 application.UUID) (map[unit.Name]string, error) {
 	m.ctrl.T.Helper()

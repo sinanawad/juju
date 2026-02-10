@@ -211,6 +211,14 @@ type UnitState interface {
 	//     is returned.
 	GetAllUnitCloudContainerIDsForApplication(context.Context, coreapplication.UUID) (map[coreunit.Name]string, error)
 
+	// ClearCAASUnitCloudContainer removes the k8s_pod row (and its
+	// k8s_pod_port children) for a unit identified by name. This is used
+	// to clear stale cloud container entries when a Deployment/DaemonSet
+	// pod is replaced by Kubernetes with a new randomly-named pod.
+	// The following errors may be returned:
+	//   - [applicationerrors.UnitNotFound] if the unit does not exist.
+	ClearCAASUnitCloudContainer(context.Context, coreunit.Name) error
+
 	// GetCharmStorageAndInstanceCountByUnitUUID returns the metadata and how many
 	// storage instances exist for the named storage on the specified unit.
 	// The following error types can be expected:
@@ -804,4 +812,22 @@ func (s *Service) GetAllUnitCloudContainerIDsForApplication(ctx context.Context,
 		return nil, errors.Capture(err)
 	}
 	return idMap, nil
+}
+
+// ClearCAASUnitCloudContainer removes the k8s_pod row (and its
+// k8s_pod_port children) for a unit identified by name. This is used to
+// clear stale cloud container entries when a Deployment/DaemonSet pod is
+// replaced by Kubernetes with a new randomly-named pod.
+//
+// The following errors may be returned:
+//   - [applicationerrors.UnitNotFound] if the unit does not exist.
+func (s *Service) ClearCAASUnitCloudContainer(ctx context.Context, unitName coreunit.Name) error {
+	ctx, span := trace.Start(ctx, trace.NameFromFunc())
+	defer span.End()
+
+	if err := unitName.Validate(); err != nil {
+		return errors.Capture(err)
+	}
+
+	return s.st.ClearCAASUnitCloudContainer(ctx, unitName)
 }

@@ -112,6 +112,12 @@ type ApplicationService interface {
 	// GetApplicationDeploymentType returns the deployment type for the
 	// specified application ("stateful", "stateless", or "daemon").
 	GetApplicationDeploymentType(ctx context.Context, appName string) (string, error)
+
+	// ClearCAASUnitCloudContainer removes the k8s_pod row (and its
+	// k8s_pod_port children) for a unit identified by name. This is used
+	// to clear stale cloud container entries when a Deployment/DaemonSet
+	// pod is replaced by Kubernetes with a new randomly-named pod.
+	ClearCAASUnitCloudContainer(ctx context.Context, unitName unit.Name) error
 }
 
 // CAASBroker exposes CAAS broker functionality to a worker.
