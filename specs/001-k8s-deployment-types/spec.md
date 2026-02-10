@@ -13,6 +13,17 @@
 - Q: Should the deployment-type constraint be silently ignored or produce a warning on IAAS models? → A: Silently ignore, consistent with existing K8s-only constraint behavior.
 - Q: Where should the workload type appear in the status output? → A: Both: as a column in the applications summary table and in per-application detail output.
 
+### Session 2026-02-10 — Storage Adaptation Research
+
+- Q: How does the K8s provider create PVCs for Deployment/DaemonSet? → A: Via `handlePVCForStatelessResource` which creates standalone PVCs that all pods share (unlike StatefulSet's `VolumeClaimTemplates` which create per-pod PVCs).
+- Q: Does `Delete()` clean up PVCs? → A: No. PVCs are never deleted for any workload type. StatefulSet PVCs follow K8s retention policy; Deployment/DaemonSet PVCs are fully orphaned.
+- Q: Does `ClearCAASUnitCloudContainer()` clean up storage attachments? → A: No. It only deletes `k8s_pod` and `k8s_pod_port` rows. Filesystem/volume attachment records are left stale.
+- Q: Is `FilesystemProvisioningInfo()` implemented? → A: No. The facade method returns empty (TODO). This blocks `EnsurePVCs` for scaling operations.
+- Q: What happens when a DaemonSet uses ReadWriteOnce storage on a multi-node cluster? → A: Only the pod on the node where the PV is bound can mount it. Other nodes' pods fail with `Multi-Attach error`. No deploy-time validation exists.
+- Q: Is implementing the `FilesystemProvisioningInfo()` facade stub in scope for the storage stories? → A: No. It is a separate prerequisite. These stories assume the facade works or note where it blocks functionality.
+- Q: Should RWO storage + Deployment/DaemonSet at scale > 1 be a blocking error or non-blocking warning? → A: Non-blocking warning. The operator explicitly overrode inference, so the system should warn (in both controller logs and CLI output) but not block deployment.
+- Q: Is the `remove-application` race fix in scope for the storage stories? → A: No. US8 adds PVC deletion to `Delete()` so it works when called, but the pre-existing race that prevents `Delete()` from running is a separate fix.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Deploy a Stateless Application (Priority: P1)
@@ -118,14 +129,104 @@ As an operator running a Deployment or DaemonSet application on Kubernetes, I wa
 
 ---
 
+### User Story 7 - Storage Attachment Cleanup on Pod Replacement (Priority: P1)
+
+As an operator running a Deployment or DaemonSet application that uses persistent storage, I want the system to automatically clean up stale storage attachment records when pods are replaced, so that replacement pods can re-register without errors and my application continues operating with its storage intact.
+
+**Why this priority**: This directly extends pod recovery (US6). Without cleaning up stale filesystem and volume attachment records alongside the stale k8s_pod entries, replaced pods encounter duplicate key errors during re-registration. This makes any storage-bearing Deployment/DaemonSet unable to self-heal after pod replacement — a critical operational gap.
+
+**Independent Test**: Can be tested by deploying a Deployment with persistent storage, deleting a pod, and verifying the replacement pod re-registers and remounts storage without errors.
+
+**Acceptance Scenarios**:
+
+1. **Given** a running Deployment with persistent storage and a pod is deleted, **When** the worker detects the stale pod entry and clears it, **Then** the associated filesystem attachment and volume attachment records for that unit are also cleared, allowing the replacement pod to re-register with fresh storage bindings.
+2. **Given** a running Deployment with persistent storage at scale=3, **When** a single pod is replaced, **Then** the replacement pod remounts the shared PVC and the unit returns to active/idle without duplicate key errors in the controller logs.
+3. **Given** a running StatefulSet with persistent storage, **When** a pod is replaced (same name), **Then** storage attachment records remain unchanged and the unit re-registers normally (no regression).
+4. **Given** a running Deployment with persistent storage at scale=3, **When** all pods are replaced simultaneously, **Then** stale storage attachment records for all 3 units are cleared and at least 2 of 3 replacement pods successfully re-register with storage (consistent with the S2.3 known limitation for k8s_pod recovery).
+
+---
+
+### User Story 8 - PVC Cleanup on Non-StatefulSet Application Removal (Priority: P1)
+
+As an operator removing a Deployment or DaemonSet application that uses persistent storage, I want all PersistentVolumeClaims created by Juju to be deleted when the application is removed, so that storage resources are not leaked in the Kubernetes namespace.
+
+**Why this priority**: When Juju creates standalone PVCs for Deployment/DaemonSet workloads (as opposed to StatefulSet VolumeClaimTemplates), those PVCs are never cleaned up. Over time, this causes storage capacity to be consumed by orphaned PVCs that operators may not notice. This is a resource leak that worsens with each deploy/remove cycle.
+
+**Independent Test**: Can be tested by deploying a Deployment with storage, verifying PVCs exist in the namespace, removing the application, and confirming the PVCs are deleted.
+
+**Acceptance Scenarios**:
+
+1. **Given** a running Deployment with persistent storage, **When** the operator removes the application, **Then** all PersistentVolumeClaims created by Juju for that application are deleted from the Kubernetes namespace.
+2. **Given** a running DaemonSet with persistent storage, **When** the operator removes the application, **Then** all PersistentVolumeClaims created by Juju for that application are deleted from the Kubernetes namespace.
+3. **Given** a running StatefulSet with persistent storage, **When** the operator removes the application, **Then** PVC behavior is unchanged from current behavior (PVCs created by VolumeClaimTemplates follow the existing retention policy — no regression).
+4. **Given** a Deployment with persistent storage that was forcefully removed (model destroy), **When** the operator inspects the namespace, **Then** PVCs bearing Juju labels for the removed application are identifiable for manual cleanup.
+
+---
+
+### User Story 9 - Deployment with Shared Persistent Storage (Priority: P2)
+
+As an operator deploying a charm with persistent storage as a Deployment workload (via explicit `deployment-type=stateless` constraint override), I want all replicas to share a single persistent volume using ReadWriteMany access, so that I can use Deployments for workloads that need shared caches, log directories, or configuration stores without data isolation between replicas.
+
+**Why this priority**: The current provider creates a single standalone PVC for Deployments that all pods reference. This works correctly with ReadWriteMany (RWX) storage classes, but silently fails with ReadWriteOnce (RWO) when scale > 1 — only one pod can mount the volume, others hang. Operators need clear feedback about access mode requirements.
+
+**Independent Test**: Can be tested by deploying a storage-bearing charm as a Deployment with a ReadWriteMany storage class, scaling to 3, and verifying all pods mount the shared volume.
+
+**Acceptance Scenarios**:
+
+1. **Given** a Kubernetes model with a ReadWriteMany-capable storage class, **When** the operator deploys a storage-bearing charm with `deployment-type=stateless`, **Then** a single shared PVC is created and all pods mount it concurrently.
+2. **Given** a running Deployment with shared storage at scale=1, **When** the operator scales to 3, **Then** all 3 pods mount the existing shared PVC without creating new PVCs.
+3. **Given** a Kubernetes model where the default storage class only supports ReadWriteOnce, **When** the operator deploys a storage-bearing charm with `deployment-type=stateless` and scale > 1, **Then** the system issues a non-blocking warning (in CLI output and controller logs) explaining that the storage class should support ReadWriteMany for shared Deployment storage, but proceeds with deployment.
+4. **Given** a running Deployment with shared storage, **When** a pod is replaced, **Then** the replacement pod remounts the same shared PVC seamlessly.
+
+---
+
+### User Story 10 - DaemonSet Storage Access Mode Validation (Priority: P2)
+
+As an operator deploying a DaemonSet charm that declares persistent storage, I want the system to warn me at deploy time when the storage access mode is incompatible with DaemonSet semantics (one pod per node, all sharing a single PVC), so that I am informed before discovering at runtime that pods on other nodes cannot mount the volume.
+
+**Why this priority**: DaemonSets run one pod per node. When a DaemonSet charm declares persistent storage, Juju creates a single standalone PVC that all pods reference. With ReadWriteOnce storage (the most common default), only the pod on the node where the PV is physically bound can mount it — all other nodes' pods fail with `Multi-Attach error`. This is a confusing runtime failure that should be caught at deploy time.
+
+**Independent Test**: Can be tested by attempting to deploy a storage-bearing charm as a DaemonSet on a multi-node cluster and verifying the system rejects it (or warns) when the storage class doesn't support ReadWriteMany.
+
+**Acceptance Scenarios**:
+
+1. **Given** a multi-node Kubernetes cluster, **When** the operator deploys a charm with persistent storage using `deployment-type=daemon` and the storage class only supports ReadWriteOnce, **Then** the system issues a non-blocking warning (in CLI output and controller logs) explaining that DaemonSet storage should use ReadWriteMany access mode or ephemeral storage, but proceeds with deployment.
+2. **Given** a multi-node Kubernetes cluster with a ReadWriteMany storage class, **When** the operator deploys a charm with persistent storage using `deployment-type=daemon`, **Then** the deployment succeeds and one pod per node mounts the shared PVC.
+3. **Given** a charm that declares only ephemeral storage (tmpfs or rootfs provider), **When** the operator deploys it with `deployment-type=daemon`, **Then** the deployment succeeds without storage access mode validation (ephemeral storage is always per-pod).
+4. **Given** a single-node cluster, **When** the operator deploys a charm with persistent RWO storage using `deployment-type=daemon`, **Then** the deployment succeeds (only one node → only one pod → RWO is sufficient).
+
+---
+
+### User Story 11 - Ephemeral Storage for Stateless Workloads (Priority: P2)
+
+As an operator deploying a Deployment or DaemonSet charm that needs temporary scratch space, caching, or write-ahead logs, I want to use ephemeral storage (EmptyDir or tmpfs) that is local to each pod and doesn't require persistent volumes, so that my stateless workloads can use fast local storage without the complexity of PVC management.
+
+**Why this priority**: Many Kubernetes workloads need temporary storage (caches, buffers, sockets) but not persistence across pod replacements. Ephemeral storage (EmptyDir/tmpfs) is the standard Kubernetes answer — it's created with the pod, destroyed with the pod, and requires no PVC provisioning. Supporting this cleanly for Deployments and DaemonSets removes the main reason operators might force a StatefulSet when they don't need one.
+
+**Independent Test**: Can be tested by deploying a charm that declares tmpfs or rootfs storage as a Deployment, verifying the pod has an EmptyDir volume mount, and confirming no PVCs are created.
+
+**Acceptance Scenarios**:
+
+1. **Given** a charm declaring storage with tmpfs provider type, **When** deployed as a Deployment, **Then** each pod gets its own EmptyDir volume with Memory medium and no PVCs are created in the namespace.
+2. **Given** a charm declaring storage with rootfs provider type, **When** deployed as a DaemonSet, **Then** each pod gets its own EmptyDir volume backed by node disk and no PVCs are created.
+3. **Given** a Deployment with ephemeral storage at scale=3, **When** a pod is replaced, **Then** the replacement pod gets a fresh empty volume (no stale data) and the unit re-registers without storage attachment errors.
+4. **Given** a charm declaring both persistent and ephemeral storage, **When** deployed as a Deployment, **Then** persistent storage uses a shared PVC and ephemeral storage uses per-pod EmptyDir volumes.
+
+---
+
 ### Edge Cases
 
 - What happens when a charm declares persistent storage but the operator deploys with `deployment-type=stateless`? The system should allow this (the operator may intend to use ephemeral storage or shared volumes) but issue a warning that persistent storage may not behave as expected with a stateless workload type.
-- What happens when a DaemonSet application charm tries to use storage with non-shared access mode? The system should reject this with a clear error, as DaemonSets cannot use storage that requires stable identity.
+- What happens when a DaemonSet application charm tries to use storage with non-shared access mode? The system should issue a non-blocking warning (consistent with FR-016), as the operator explicitly chose the workload type override. The deployment proceeds but warns that ReadWriteOnce storage may cause Multi-Attach errors on multi-node clusters.
 - What happens when an operator tries to change the workload type of an already-running application? The system should reject this with a clear error, as changing workload types requires a full redeployment (this is a destructive operation).
 - What happens when constraints are set at the model level for deployment-type? The system should apply the model-level constraint as a default for new deployments within that model, overridable per-application.
 - What happens during a controller upgrade when existing applications have no workload type recorded? The system should default existing applications to StatefulSet to preserve current behavior.
 - What happens when a CAAS model is migrated between controllers? The deployment type must survive the migration. For inferred types (no explicit constraint), the import side must re-infer from charm metadata. For explicit constraints (including `daemon`), the serialization layer (`description/v11`) must carry the `deployment-type` field through the export/import round-trip.
+- What happens when a Deployment with shared persistent storage scales down from 3 to 1 and back to 3? The shared PVC should remain intact across scaling operations. The surviving pod keeps its mount, new pods mount the same PVC. No PVC deletion or recreation should occur on scale changes.
+- What happens when a Deployment pod with persistent storage is deleted and the replacement pod starts before the worker clears stale storage attachments? The registration should fail with a retryable error (duplicate key or filesystem attachment conflict). After the worker clears stale entries on its next cycle, the retry succeeds. The system should not create duplicate storage instances.
+- What happens when a DaemonSet with ephemeral storage loses a node? Pods on the removed node are naturally terminated by K8s. The stale unit's cloud container and storage attachments should be cleaned up by the worker. If the node returns, the DaemonSet schedules a new pod with fresh ephemeral storage.
+- What happens when the operator specifies a ReadWriteOnce storage class explicitly for a Deployment at scale=1, then later scales to 3? The deploy-time warning (FR-016) already informed the operator about the access mode incompatibility. At scale-up time, the system does not re-validate (per assumption: "Storage access mode validation is a deploy-time check, not a runtime check"). The first pod continues running; additional pods will fail to mount with a Multi-Attach error from Kubernetes. Scale-time re-validation is deferred to future work.
+- What happens when a charm declares multiple storage instances (e.g., `data` and `cache`), one persistent and one ephemeral, and is deployed as a Deployment? Each storage type should be handled independently: persistent gets a shared PVC, ephemeral gets per-pod EmptyDir. The two storage types should not interfere with each other during pod replacement or scaling.
 
 ### Known Bugs (Pre-existing, Not Introduced by This Feature)
 
@@ -180,11 +281,20 @@ As an operator running a Deployment or DaemonSet application on Kubernetes, I wa
 - **FR-011**: System MUST default existing applications (deployed before this feature) to the StatefulSet workload type during upgrades, with no disruption to running workloads.
 - **FR-012**: System MUST issue a warning when an operator deploys with `deployment-type=stateless` but the charm declares persistent storage requirements.
 - **FR-013**: System MUST preserve the deployment type of CAAS applications during model migration. Inferred types must be re-derived from charm metadata on import. Explicitly constrained types (including `daemon`) require the `description` serialization library to support the `deployment-type` constraint field.
+- **FR-014**: System MUST clear stale filesystem attachment and volume attachment records when clearing stale cloud container entries for replaced Deployment/DaemonSet pods, preventing duplicate key errors during re-registration.
+- **FR-015**: System MUST delete all Juju-created standalone PersistentVolumeClaims when a Deployment or DaemonSet application is removed, preventing orphaned storage resources in the Kubernetes namespace.
+- **FR-016**: System MUST warn (via both CLI output and controller logs) when the storage access mode is incompatible with the workload type at deploy time: Deployment with persistent storage at scale > 1 with ReadWriteOnce, or DaemonSet with persistent storage on a multi-node cluster with ReadWriteOnce. The warning is non-blocking — the deployment proceeds because the operator explicitly chose the workload type override.
+- **FR-017**: System MUST support ephemeral storage (EmptyDir and tmpfs provider types) for Deployment and DaemonSet workloads, creating per-pod volumes that do not require PersistentVolumeClaims.
+- **FR-018**: System MUST NOT create or delete PersistentVolumeClaims during Deployment or DaemonSet scale operations. The shared PVC remains stable regardless of replica count changes.
 
 ### Key Entities
 
 - **Workload Type**: The kind of Kubernetes workload controller used for an application. One of: stateless (Deployment), stateful (StatefulSet), or daemon (DaemonSet). Determined at deploy time either automatically or by explicit operator constraint, and immutable for the lifetime of the application.
 - **Deployment-Type Constraint**: A new constraint field that allows operators to explicitly select the workload type. Follows existing constraint semantics (can be set at model or application level, application-level overrides model-level).
+- **Standalone PVC**: A PersistentVolumeClaim created directly by Juju (not via K8s VolumeClaimTemplates) for Deployment and DaemonSet workloads. Shared by all pods of the workload. Juju is responsible for its full lifecycle (creation and deletion).
+- **VolumeClaimTemplate PVC**: A PersistentVolumeClaim created by Kubernetes as part of a StatefulSet's VolumeClaimTemplates spec. One PVC per replica, named `{template}-{pod-ordinal}`. K8s manages creation; retention policy governs deletion.
+- **Ephemeral Storage**: Pod-local storage (EmptyDir or tmpfs) that exists only for the lifetime of a pod. Created and destroyed with the pod. Does not require PersistentVolumeClaims.
+- **Storage Access Mode**: Kubernetes PVC access mode (ReadWriteOnce, ReadWriteMany, ReadOnlyMany). Determines whether a volume can be mounted by pods on one or multiple nodes simultaneously.
 
 ### Terminology
 
@@ -200,6 +310,11 @@ As an operator running a Deployment or DaemonSet application on Kubernetes, I wa
 - DaemonSet unit representation in status will use the same ordinal naming as other workload types for simplicity. Mapping pods to specific nodes is deferred to future work.
 - StatefulSet pod names follow `<app>-<ordinal>` convention, so unit registration can derive the ordinal from the pod name. Deployment/DaemonSet pod names have random suffixes (e.g., `nginx-759b4f4b68-5mk8l`), so unit registration uses a 3-step strategy: (1) look up existing unit by provider ID (idempotent re-registration), (2) find an unassigned unit with no `k8s_pod` row (pre-created at deploy time), (3) allocate the next available ordinal. Additionally, the unit registration scaling gate is relaxed for non-StatefulSet deployments: StatefulSet requires `Scaling=true` AND `ordinal < ScaleTarget` (strict gate set by `EnsureScale`), while Deployment/DaemonSet counts alive units and only requires `aliveCount < appScale.Scale` since pods may start before `EnsureScale` runs.
 - The `deployment-type` constraint is only meaningful for Kubernetes (CAAS) models and is silently ignored (no warning or error) for IAAS models, consistent with how other Kubernetes-specific constraints behave.
+- Deployment and DaemonSet workloads with persistent storage share a single PVC across all pods (standalone PVC model). This is fundamentally different from StatefulSet, where each pod gets its own PVC via VolumeClaimTemplates. Operators who need per-pod persistent storage must use StatefulSet.
+- The K8s provider already handles EmptyDir/tmpfs volumes via `VolumeSourceForFilesystem()` — these return a non-nil VolumeSource and bypass PVC creation entirely. This path should work for Deployment/DaemonSet today but requires validation.
+- Storage access mode validation is a deploy-time check, not a runtime check. Once deployed, the system does not re-validate access modes on scale changes. Scale-time validation is limited to warning (not blocking) because the operator may have set up a ReadWriteMany-capable StorageClass after initial deployment.
+- PVC cleanup on application removal depends on the `Delete()` method in the K8s provider being called. The pre-existing `remove-application` race condition (documented in Known Bugs) can prevent `Delete()` from running, in which case PVCs are orphaned. **The removal race fix is out of scope for these storage stories.** US8 adds PVC deletion to `Delete()` so cleanup works when the method is called. Reliable execution depends on the race being fixed separately.
+- The `FilesystemProvisioningInfo()` facade method is currently a stub (returns empty). Full storage support for scaling operations (`EnsurePVCs`) depends on implementing this facade. **This facade fix is out of scope for the storage adaptation stories** — it is a separate prerequisite. Stories that depend on it (US9 scaling with storage, US11 scaling with ephemeral storage) note this dependency but do not include its implementation.
 
 ## Success Criteria *(mandatory)*
 
@@ -212,3 +327,7 @@ As an operator running a Deployment or DaemonSet application on Kubernetes, I wa
 - **SC-005**: Invalid workload type values are caught at deploy time with a clear, actionable error message, preventing any partial or failed deployments.
 - **SC-006**: Manual scaling operations on DaemonSet applications are blocked with a clear error, preventing operator confusion about how DaemonSets scale.
 - **SC-007**: Operators using the constraint override can deploy any charm as any supported workload type, with 100% of valid constraint values being accepted and applied correctly.
+- **SC-008**: When a Deployment pod with persistent storage is replaced, the replacement pod re-registers and remounts storage within 30 seconds without duplicate key errors in the controller logs.
+- **SC-009**: After removing a Deployment or DaemonSet application with persistent storage, zero Juju-created PVCs remain in the Kubernetes namespace within 60 seconds of removal completing.
+- **SC-010**: Deploying a Deployment or DaemonSet with persistent ReadWriteOnce storage in an incompatible configuration produces a non-blocking warning in both CLI output and controller logs within 5 seconds of the deploy command.
+- **SC-011**: Deployment and DaemonSet workloads with ephemeral storage (EmptyDir/tmpfs) deploy, scale, and recover from pod replacement without creating any PersistentVolumeClaims.

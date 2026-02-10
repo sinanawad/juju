@@ -102,3 +102,68 @@ Default 0 (stateful) ensures existing applications get StatefulSet on upgrade.
 3. Otherwise → `DeploymentStateless`
 
 This keeps the heuristic close to where it's consumed and avoids leaking it into the domain layer.
+
+---
+
+## Storage Adaptation Research (2026-02-10)
+
+### Decision 8: Storage Attachment Cleanup Strategy
+
+**Decision**: Extend `ClearCAASUnitCloudContainer()` in `domain/application/state/unit.go` to cascade-delete `storage_filesystem_attachment` and `storage_volume_attachment` rows within the same transaction.
+
+**Rationale**: The function already runs within a `db.Txn()` block and deletes `k8s_pod`/`k8s_pod_port` rows keyed by the unit's `net_node_uuid`. Storage attachment tables (`storage_filesystem_attachment`, `storage_volume_attachment`) are also keyed by `net_node_uuid`, making the cascade a natural extension. All DELETE statements are idempotent (no error if rows don't exist).
+
+**Alternatives considered**:
+- UPSERT in `setFilesystemProviderIDs`/`setFilesystemAttachmentProviderIDs`: Rejected — these functions UPDATE existing records (not INSERT), so the duplicate key comes from the attachment table, not the provider ID columns. UPSERT doesn't address the root cause.
+- Separate `ClearCAASUnitStorage()` method: Rejected — the cleanup must be atomic with `k8s_pod` cleanup to prevent race windows. A single transaction is simpler and safer.
+
+**Key tables**:
+- `storage_filesystem_attachment` (schema 0011-storage.sql:418) — keyed by `net_node_uuid`
+- `storage_volume_attachment` (schema 0011-storage.sql:304) — keyed by `net_node_uuid`
+
+### Decision 9: PVC Cleanup in Delete()
+
+**Decision**: Add PVC listing and deletion to `Delete()` in the K8s provider for non-StatefulSet workloads, using the existing `resourceLabels` selector pattern.
+
+**Rationale**: The `Delete()` method already lists and deletes 14 resource types (StatefulSets, Services, Secrets, ConfigMaps, Roles, etc.) using the same label selector pattern. PVCs carry the same Juju labels (`app.kubernetes.io/managed-by=juju`, `app.kubernetes.io/name={appName}`). Adding PVCs follows the identical pattern — `resources.ListPersistentVolumeClaims()` is already available in the codebase.
+
+**Guard**: Only delete PVCs for non-StatefulSet applications. StatefulSet PVCs are managed by K8s VolumeClaimTemplates retention policy (`persistentVolumeClaimRetentionPolicy`).
+
+**Alternatives considered**:
+- Delete PVCs for all workload types: Rejected — would change StatefulSet behavior and break backward compatibility.
+- Use `pvcNames()` regex matching: Rejected — `pvcNames()` is a complex function for PVC reuse during scaling. For deletion, the simpler label selector approach matches all other resource cleanup.
+
+**Key locations**:
+- `Delete()`: `internal/provider/kubernetes/application/application.go:986-1215`
+- PVC labels: `utils.LabelsForStorage()` in `internal/provider/kubernetes/utils/labels.go`
+- PVC resource helper: `resources.ListPersistentVolumeClaims()`
+
+### Decision 10: Access Mode Validation Approach
+
+**Decision**: Emit a non-blocking warning at deploy time when storage access modes are incompatible with the workload type. No blocking errors.
+
+**Rationale**: Per clarification session Q2, the operator explicitly overrode inference by setting `deployment-type=stateless` or `deployment-type=daemon`. The system should warn but not block, since:
+1. The operator may have a ReadWriteMany-capable storage class configured
+2. K8s `StorageClass` objects do not expose supported access modes in their spec — the system cannot definitively determine incompatibility
+3. Single-replica Deployments and single-node DaemonSets work fine with RWO
+
+**Validation location**: `internal/worker/caasapplicationprovisioner/ops.go` (alongside existing stateless+storage warning at line 260). Access mode is available via `ParseStorageMode()` in `storage/volumes.go:127`.
+
+**Limitation**: The system checks the access mode from the Juju storage pool config, not from the K8s StorageClass. If the operator doesn't set an explicit access mode, the default is ReadWriteOnce. The warning fires based on this configured value.
+
+### Decision 11: Ephemeral Storage Requires No New Code
+
+**Decision**: The existing `VolumeSourceForFilesystem()` code path already handles EmptyDir/tmpfs for all deployment types. Phase 12 is primarily validation and test.
+
+**Rationale**: `VolumeSourceForFilesystem()` in `storage/storage.go:57-86` returns a non-nil `VolumeSource` for `rootfs` (EmptyDir) and `tmpfs` (EmptyDir with Memory medium). When the VolumeSource is non-nil, `filesystemToVolumeInfo()` (application.go:2302) bypasses PVC creation entirely. This code path is deployment-type-agnostic — it works the same for StatefulSet, Deployment, and DaemonSet.
+
+**What needs validation**:
+- Pod replacement with ephemeral storage creates a fresh volume (expected K8s behavior)
+- No storage attachment records are created for ephemeral volumes (needs verification)
+- Mixed persistent+ephemeral storage works (persistent gets PVC, ephemeral gets EmptyDir)
+
+### Decision 12: PVC Stability During Scaling
+
+**Decision**: Verify (not implement) that scale operations don't create or delete PVCs for non-StatefulSet workloads.
+
+**Rationale**: The `Ensure()` method's Deployment path (application.go:342-384) calls `handlePVCForStatelessResource` only when the PVC doesn't exist. The function uses `resources.NewPersistentVolumeClaim` with `Apply()` semantics (create-or-update), so re-running on an existing PVC is a no-op. Scale changes only modify the Deployment's `replicas` field. Phase 13 confirms this behavior with tests.
