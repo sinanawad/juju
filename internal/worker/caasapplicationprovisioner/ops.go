@@ -59,33 +59,12 @@ type ProvisioningInfo struct {
 	Trust                bool
 	Scale                int
 
-	DeploymentType       string
+	DeploymentType string
 
 	CharmMeta           *charm.Meta
 	Images              map[string]coreresource.DockerImageDetails
 	FilesystemTemplates []storageprovisioning.FilesystemTemplate
 	StorageResourceTags map[string]string
-}
-
-// DetermineDeploymentType determines the CAAS deployment type to use.
-// If an explicit constraint is set, it takes priority. Otherwise, if
-// the charm declares persistent storage, StatefulSet is used. If no
-// storage is declared, Deployment is used.
-func DetermineDeploymentType(constraint string, hasStorage bool) caas.DeploymentType {
-	if constraint != "" {
-		switch constraint {
-		case "stateless":
-			return caas.DeploymentStateless
-		case "daemon":
-			return caas.DeploymentDaemon
-		default:
-			return caas.DeploymentStateful
-		}
-	}
-	if hasStorage {
-		return caas.DeploymentStateful
-	}
-	return caas.DeploymentStateless
 }
 
 // ApplicationOps defines all the operations the application worker can perform.
@@ -118,7 +97,7 @@ type ApplicationOps interface {
 		applicationService ApplicationService, logger logger.Logger) error
 
 	UpdateState(ctx context.Context, appName string, appUUID coreapplication.UUID,
-		app caas.Application, lastReportedStatus UpdateStatusState,
+		app caas.Application, lastReportedStatus UpdateStatusState, deploymentType string,
 		broker CAASBroker, applicationService ApplicationService, statusService StatusService,
 		clk clock.Clock, logger logger.Logger) (UpdateStatusState, error)
 
@@ -134,7 +113,7 @@ type ApplicationOps interface {
 		applicationService ApplicationService, logger logger.Logger) error
 
 	EnsureScale(ctx context.Context, appName string, appUUID coreapplication.UUID,
-		app caas.Application, appLife life.Value, orderedScale bool, facade CAASProvisionerFacade,
+		app caas.Application, appLife life.Value, deploymentType string, facade CAASProvisionerFacade,
 		applicationService ApplicationService, logger logger.Logger) error
 }
 
@@ -195,10 +174,12 @@ func (applicationOps) EnsureTrust(
 func (applicationOps) UpdateState(
 	ctx context.Context,
 	appName string, appUUID coreapplication.UUID, app caas.Application, lastReportedStatus UpdateStatusState,
+	deploymentType string,
 	broker CAASBroker, applicationService ApplicationService, statusService StatusService,
 	clk clock.Clock, logger logger.Logger,
 ) (UpdateStatusState, error) {
-	return updateState(ctx, appName, appUUID, app, lastReportedStatus, broker, applicationService, statusService, clk, logger)
+	return updateState(ctx, appName, appUUID, app, lastReportedStatus, deploymentType,
+		broker, applicationService, statusService, clk, logger)
 }
 
 func (applicationOps) RefreshOperatorStatus(
@@ -230,12 +211,12 @@ func (applicationOps) ReconcileDeadUnitScale(
 func (applicationOps) EnsureScale(
 	ctx context.Context,
 	appName string, appUUID coreapplication.UUID, app caas.Application, appLife life.Value,
-	orderedScale bool,
+	deploymentType string,
 	facade CAASProvisionerFacade,
 	applicationService ApplicationService,
 	logger logger.Logger,
 ) error {
-	return ensureScale(ctx, appName, appUUID, app, appLife, orderedScale, facade, applicationService, logger)
+	return ensureScale(ctx, appName, appUUID, app, appLife, deploymentType, facade, applicationService, logger)
 }
 
 type Tomb interface {
@@ -254,7 +235,7 @@ func appAlive(ctx context.Context, appName string, appUUID coreapplication.UUID,
 
 	// Warn if the deployment type is stateless but the charm declares
 	// persistent storage, as storage may not behave as expected.
-	if pi.DeploymentType == "stateless" && pi.CharmMeta != nil && len(pi.CharmMeta.Storage) > 0 {
+	if pi.DeploymentType == string(caas.DeploymentStateless) && pi.CharmMeta != nil && len(pi.CharmMeta.Storage) > 0 {
 		logger.Warningf(ctx,
 			"application %q has deployment-type=stateless but the charm declares persistent storage; "+
 				"storage may not behave as expected with a stateless workload type", appName)
@@ -411,9 +392,10 @@ func appDying(
 	logger logger.Logger,
 ) (err error) {
 	logger.Debugf(ctx, "application %q dying", appName)
-	// orderedScale=true is fine here: when scaling to 0, all units are
-	// destroyed regardless of the deployment type.
-	err = ensureScale(ctx, appName, appUUID, app, appLife, true, facade, applicationService, logger)
+	// Stateful (ordered scale) is fine here: when scaling to 0, all
+	// units are destroyed regardless of the deployment type.
+	err = ensureScale(ctx, appName, appUUID, app, appLife,
+		string(caas.DeploymentStateful), facade, applicationService, logger)
 	if err != nil {
 		return errors.Annotate(err, "cannot scale dying application to 0")
 	}
@@ -480,7 +462,7 @@ func ensureTrust(
 func updateState(
 	ctx context.Context,
 	appName string, appUUID coreapplication.UUID, app caas.Application,
-	lastReportedStatus UpdateStatusState,
+	lastReportedStatus UpdateStatusState, deploymentType string,
 	broker CAASBroker, applicationService ApplicationService, statusService StatusService,
 	clk clock.Clock, logger logger.Logger,
 ) (UpdateStatusState, error) {
@@ -525,18 +507,24 @@ func updateState(
 	// different name. The old unit's k8s_pod row blocks registration of the
 	// new pod (step 2 of RegisterCAASUnit requires kp.unit_uuid IS NULL).
 	// Clear stale rows so the new pod can claim the existing unit.
-	activePods := make(map[string]struct{}, len(units))
-	for _, u := range units {
-		activePods[u.Id] = struct{}{}
-	}
-	for uName, podName := range unitToPod {
-		if _, active := activePods[podName]; !active {
-			logger.Infof(ctx, "clearing stale cloud container for unit %s (pod %s no longer active)", uName, podName)
-			if err := applicationService.ClearCAASUnitCloudContainer(ctx, uName); err != nil && !errors.Is(err, applicationerrors.UnitNotFound) {
-				return nil, errors.Trace(err)
+	// StatefulSet pods have stable names and re-register under the same
+	// unit, so their rows must be left alone while a pod is rescheduled.
+	if deploymentType != string(caas.DeploymentStateful) {
+		activePods := make(map[string]struct{}, len(units))
+		for _, u := range units {
+			activePods[u.Id] = struct{}{}
+		}
+		for uName, podName := range unitToPod {
+			if _, active := activePods[podName]; !active {
+				logger.Infof(ctx, "clearing stale cloud container for unit %s (pod %s no longer active)",
+					uName, podName)
+				err := applicationService.ClearCAASUnitCloudContainer(ctx, uName)
+				if err != nil && !errors.Is(err, applicationerrors.UnitNotFound) {
+					return nil, errors.Trace(err)
+				}
+				// Remove from podToUnit so the stale entry isn't used below.
+				delete(podToUnit, podName)
 			}
-			// Remove from podToUnit so the stale entry isn't used below.
-			delete(podToUnit, podName)
 		}
 	}
 
@@ -746,11 +734,12 @@ func reconcileDeadUnitScale(
 func ensureScale(
 	ctx context.Context,
 	appName string, appUUID coreapplication.UUID, app caas.Application, appLife life.Value,
-	orderedScale bool,
+	deploymentType string,
 	facade CAASProvisionerFacade,
 	applicationService ApplicationService,
 	logger logger.Logger,
 ) error {
+	orderedScale := deploymentType == string(caas.DeploymentStateful)
 	var err error
 	var desiredScale int
 	switch appLife {
@@ -878,6 +867,24 @@ func ensureScale(
 	if len(unitsToDestroy) > 0 {
 		if err := facade.DestroyUnits(ctx, unitsToDestroy); err != nil {
 			return errors.Trace(err)
+		}
+	}
+
+	// For Deployments, patch the K8s replica count immediately.
+	// Unlike StatefulSet (where reconcileDeadUnitScale waits for orderly
+	// pod shutdown), Deployments have no ordered shutdown requirement,
+	// so we can safely tell K8s to scale down now. Without this, a
+	// deadlock occurs: reconcileDeadUnitScale waits for units to die,
+	// but K8s never kills the pods because spec.replicas was never
+	// reduced.
+	// DaemonSets are excluded: their pod count is determined by node
+	// count, not a replica field, and Scale() is not supported for them.
+	if deploymentType == string(caas.DeploymentStateless) {
+		if err := ensureScaleWithFsAttachments(
+			ctx, appName, appUUID, app, ps.ScaleTarget,
+			facade, logger, getStorageUniqueID(appUUID),
+		); err != nil {
+			return err
 		}
 	}
 

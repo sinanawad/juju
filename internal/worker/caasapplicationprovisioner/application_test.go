@@ -215,7 +215,7 @@ func (s *ApplicationWorkerSuite) TestWorker(c *tc.C) {
 		// scaleChan fired
 		ops.EXPECT().EnsureScale(x, "test", s.appUUID, app, life.Alive, x, x, x, x).Return(errors.NotFound),
 		ops.EXPECT().EnsureScale(x, "test", s.appUUID, app, life.Alive, x, x, x, x).Return(errors.ConstError("try again")),
-		ops.EXPECT().EnsureScale(x, "test", s.appUUID, app, life.Alive, x, x, x, x).DoAndReturn(func(ctx context.Context, s string, i application.UUID, a caas.Application, v life.Value, orderedScale bool, cf CAASProvisionerFacade, as ApplicationService, l logger.Logger) error {
+		ops.EXPECT().EnsureScale(x, "test", s.appUUID, app, life.Alive, x, x, x, x).DoAndReturn(func(ctx context.Context, s string, i application.UUID, a caas.Application, v life.Value, deploymentType string, cf CAASProvisionerFacade, as ApplicationService, l logger.Logger) error {
 			settingsChan <- struct{}{}
 			return nil
 		}),
@@ -242,12 +242,12 @@ func (s *ApplicationWorkerSuite) TestWorker(c *tc.C) {
 			}),
 
 		// appChan fired
-		ops.EXPECT().UpdateState(x, "test", s.appUUID, app, x, x, x, x, x, x).DoAndReturn(func(context.Context, string, application.UUID, caas.Application, UpdateStatusState, CAASBroker, ApplicationService, StatusService, clock.Clock, logger.Logger) (UpdateStatusState, error) {
+		ops.EXPECT().UpdateState(x, "test", s.appUUID, app, x, x, x, x, x, x, x).DoAndReturn(func(context.Context, string, application.UUID, caas.Application, UpdateStatusState, string, CAASBroker, ApplicationService, StatusService, clock.Clock, logger.Logger) (UpdateStatusState, error) {
 			appReplicasChan <- struct{}{}
 			return nil, nil
 		}),
 		// appReplicasChan fired
-		ops.EXPECT().UpdateState(x, "test", s.appUUID, app, x, x, x, x, x, x).DoAndReturn(func(context.Context, string, application.UUID, caas.Application, UpdateStatusState, CAASBroker, ApplicationService, StatusService, clock.Clock, logger.Logger) (UpdateStatusState, error) {
+		ops.EXPECT().UpdateState(x, "test", s.appUUID, app, x, x, x, x, x, x, x).DoAndReturn(func(context.Context, string, application.UUID, caas.Application, UpdateStatusState, string, CAASBroker, ApplicationService, StatusService, clock.Clock, logger.Logger) (UpdateStatusState, error) {
 			provisioningInfoChan <- struct{}{}
 			return nil, nil
 		}),
@@ -335,12 +335,12 @@ func (s *ApplicationWorkerSuite) TestWorkerStatusOnly(c *tc.C) {
 		}),
 
 		// appChan fired
-		ops.EXPECT().UpdateState(x, "con-troll-er", s.appUUID, app, x, broker, applicationService, statusService, clk, s.logger).DoAndReturn(func(context.Context, string, application.UUID, caas.Application, UpdateStatusState, CAASBroker, ApplicationService, StatusService, clock.Clock, logger.Logger) (UpdateStatusState, error) {
+		ops.EXPECT().UpdateState(x, "con-troll-er", s.appUUID, app, x, x, broker, applicationService, statusService, clk, s.logger).DoAndReturn(func(context.Context, string, application.UUID, caas.Application, UpdateStatusState, string, CAASBroker, ApplicationService, StatusService, clock.Clock, logger.Logger) (UpdateStatusState, error) {
 			appReplicasChan <- struct{}{}
 			return nil, nil
 		}),
 		// appReplicasChan fired
-		ops.EXPECT().UpdateState(x, "con-troll-er", s.appUUID, app, x, broker, applicationService, statusService, clk, s.logger).DoAndReturn(func(context.Context, string, application.UUID, caas.Application, UpdateStatusState, CAASBroker, ApplicationService, StatusService, clock.Clock, logger.Logger) (UpdateStatusState, error) {
+		ops.EXPECT().UpdateState(x, "con-troll-er", s.appUUID, app, x, x, broker, applicationService, statusService, clk, s.logger).DoAndReturn(func(context.Context, string, application.UUID, caas.Application, UpdateStatusState, string, CAASBroker, ApplicationService, StatusService, clock.Clock, logger.Logger) (UpdateStatusState, error) {
 			provisioningInfoChan <- struct{}{}
 			return nil, nil
 		}),
@@ -397,6 +397,7 @@ func (s *ApplicationWorkerSuite) TestWorkerRefreshTimerResetOnUnitsChurning(c *t
 	gomock.InOrder(
 		applicationService.EXPECT().GetApplicationName(x, s.appUUID).Return("test", nil),
 		applicationService.EXPECT().IsControllerApplication(x, s.appUUID).Return(false, nil),
+		applicationService.EXPECT().GetApplicationDeploymentType(x, "test").Return("stateful", nil),
 		broker.EXPECT().Application("test", caas.DeploymentStateful).Return(app),
 		applicationService.EXPECT().GetApplicationLife(x, s.appUUID).Return(life.Alive, nil),
 
@@ -509,7 +510,7 @@ func (s *ApplicationWorkerSuite) TestNotProvisionedRetry(c *tc.C) {
 		// scaleChan fired
 		ops.EXPECT().EnsureScale(x, "test", s.appUUID, app, life.Alive, x, x, x, x).Return(errors.NotFound),
 		ops.EXPECT().EnsureScale(x, "test", s.appUUID, app, life.Alive, x, x, x, x).Return(errors.ConstError("try again")),
-		ops.EXPECT().EnsureScale(x, "test", s.appUUID, app, life.Alive, x, x, x, x).DoAndReturn(func(ctx context.Context, s string, i application.UUID, a caas.Application, v life.Value, orderedScale bool, cf CAASProvisionerFacade, as ApplicationService, l logger.Logger) error {
+		ops.EXPECT().EnsureScale(x, "test", s.appUUID, app, life.Alive, x, x, x, x).DoAndReturn(func(ctx context.Context, s string, i application.UUID, a caas.Application, v life.Value, deploymentType string, cf CAASProvisionerFacade, as ApplicationService, l logger.Logger) error {
 			settingsChan <- struct{}{}
 			return nil
 		}),
@@ -534,12 +535,12 @@ func (s *ApplicationWorkerSuite) TestNotProvisionedRetry(c *tc.C) {
 			}),
 
 		// appChan fired
-		ops.EXPECT().UpdateState(x, "test", s.appUUID, app, x, x, x, x, x, x).DoAndReturn(func(context.Context, string, application.UUID, caas.Application, UpdateStatusState, CAASBroker, ApplicationService, StatusService, clock.Clock, logger.Logger) (UpdateStatusState, error) {
+		ops.EXPECT().UpdateState(x, "test", s.appUUID, app, x, x, x, x, x, x, x).DoAndReturn(func(context.Context, string, application.UUID, caas.Application, UpdateStatusState, string, CAASBroker, ApplicationService, StatusService, clock.Clock, logger.Logger) (UpdateStatusState, error) {
 			appReplicasChan <- struct{}{}
 			return nil, nil
 		}),
 		// appReplicasChan fired
-		ops.EXPECT().UpdateState(x, "test", s.appUUID, app, x, x, x, x, x, x).DoAndReturn(func(context.Context, string, application.UUID, caas.Application, UpdateStatusState, CAASBroker, ApplicationService, StatusService, clock.Clock, logger.Logger) (UpdateStatusState, error) {
+		ops.EXPECT().UpdateState(x, "test", s.appUUID, app, x, x, x, x, x, x, x).DoAndReturn(func(context.Context, string, application.UUID, caas.Application, UpdateStatusState, string, CAASBroker, ApplicationService, StatusService, clock.Clock, logger.Logger) (UpdateStatusState, error) {
 			provisioningInfoChan <- struct{}{}
 			return nil, nil
 		}),

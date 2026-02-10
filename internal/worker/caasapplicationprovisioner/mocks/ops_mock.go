@@ -34,12 +34,12 @@ type MockApplicationOpsMockRecorder struct {
 	appAliveExpects               []*gomock.Call10_1[context.Context, string, application.UUID, caas.Application, string, *caas.ApplicationConfig, *caasapplicationprovisioner.ProvisioningInfo, caasapplicationprovisioner.StatusService, clock.Clock, logger.Logger, error]
 	appDeadExpects                []*gomock.Call7_1[context.Context, string, application.UUID, caas.Application, caasapplicationprovisioner.ApplicationService, clock.Clock, logger.Logger, error]
 	appDyingExpects               []*gomock.Call9_1[context.Context, string, application.UUID, caas.Application, life.Value, caasapplicationprovisioner.CAASProvisionerFacade, caasapplicationprovisioner.ApplicationService, caasapplicationprovisioner.StatusService, logger.Logger, error]
-	ensureScaleExpects            []*gomock.Call9_1[context.Context, string, application.UUID, caas.Application, life.Value, bool, caasapplicationprovisioner.CAASProvisionerFacade, caasapplicationprovisioner.ApplicationService, logger.Logger, error]
+	ensureScaleExpects            []*gomock.Call9_1[context.Context, string, application.UUID, caas.Application, life.Value, string, caasapplicationprovisioner.CAASProvisionerFacade, caasapplicationprovisioner.ApplicationService, logger.Logger, error]
 	ensureTrustExpects            []*gomock.Call5_1[context.Context, string, caas.Application, caasapplicationprovisioner.ApplicationService, logger.Logger, error]
 	provisioningInfoExpects       []*gomock.Call9_2[context.Context, string, application.UUID, caasapplicationprovisioner.CAASProvisionerFacade, caasapplicationprovisioner.ApplicationService, caasapplicationprovisioner.StorageProvisioningService, caasapplicationprovisioner.ResourceOpenerGetter, *caasapplicationprovisioner.ProvisioningInfo, logger.Logger, *caasapplicationprovisioner.ProvisioningInfo, error]
 	reconcileDeadUnitScaleExpects []*gomock.Call7_1[context.Context, string, application.UUID, caas.Application, caasapplicationprovisioner.CAASProvisionerFacade, caasapplicationprovisioner.ApplicationService, logger.Logger, error]
 	refreshOperatorStatusExpects  []*gomock.Call8_1[context.Context, string, application.UUID, caas.Application, life.Value, caasapplicationprovisioner.StatusService, clock.Clock, logger.Logger, error]
-	updateStateExpects            []*gomock.Call10_2[context.Context, string, application.UUID, caas.Application, caasapplicationprovisioner.UpdateStatusState, caasapplicationprovisioner.CAASBroker, caasapplicationprovisioner.ApplicationService, caasapplicationprovisioner.StatusService, clock.Clock, logger.Logger, caasapplicationprovisioner.UpdateStatusState, error]
+	updateStateExpects            []*gomock.Call11_2[context.Context, string, application.UUID, caas.Application, caasapplicationprovisioner.UpdateStatusState, string, caasapplicationprovisioner.CAASBroker, caasapplicationprovisioner.ApplicationService, caasapplicationprovisioner.StatusService, clock.Clock, logger.Logger, caasapplicationprovisioner.UpdateStatusState, error]
 	waitForTerminatedExpects      []*gomock.Call3_1[string, caas.Application, clock.Clock, error]
 }
 
@@ -110,22 +110,22 @@ func (mr *MockApplicationOpsMockRecorder) AppDying(ctx, appName, appUUID, app, a
 type MockApplicationOpsAppDyingCall = gomock.Call9_1[context.Context, string, application.UUID, caas.Application, life.Value, caasapplicationprovisioner.CAASProvisionerFacade, caasapplicationprovisioner.ApplicationService, caasapplicationprovisioner.StatusService, logger.Logger, error]
 
 // EnsureScale mocks base method.
-func (m *MockApplicationOps) EnsureScale(ctx context.Context, appName string, appUUID application.UUID, app caas.Application, appLife life.Value, orderedScale bool, facade caasapplicationprovisioner.CAASProvisionerFacade, applicationService caasapplicationprovisioner.ApplicationService, arg8 logger.Logger) error {
+func (m *MockApplicationOps) EnsureScale(ctx context.Context, appName string, appUUID application.UUID, app caas.Application, appLife life.Value, deploymentType string, facade caasapplicationprovisioner.CAASProvisionerFacade, applicationService caasapplicationprovisioner.ApplicationService, arg8 logger.Logger) error {
 	m.ctrl.T.Helper()
-	return gomock.Dispatch9_1(&m.recorder.ensureScaleExpects, m.ctrl, m, "EnsureScale", ctx, appName, appUUID, app, appLife, orderedScale, facade, applicationService, arg8)
+	return gomock.Dispatch9_1(&m.recorder.ensureScaleExpects, m.ctrl, m, "EnsureScale", ctx, appName, appUUID, app, appLife, deploymentType, facade, applicationService, arg8)
 }
 
 // EnsureScale indicates an expected call of EnsureScale.
-func (mr *MockApplicationOpsMockRecorder) EnsureScale(ctx, appName, appUUID, app, appLife, orderedScale, facade, applicationService, arg8 any) *MockApplicationOpsEnsureScaleCall {
+func (mr *MockApplicationOpsMockRecorder) EnsureScale(ctx, appName, appUUID, app, appLife, deploymentType, facade, applicationService, arg8 any) *MockApplicationOpsEnsureScaleCall {
 	mr.mock.ctrl.T.Helper()
-	call := gomock.NewCall9_1[context.Context, string, application.UUID, caas.Application, life.Value, bool, caasapplicationprovisioner.CAASProvisionerFacade, caasapplicationprovisioner.ApplicationService, logger.Logger, error](mr.mock.ctrl.T, mr.mock, "EnsureScale", gomock.EnsureMatcher(ctx), gomock.EnsureMatcher(appName), gomock.EnsureMatcher(appUUID), gomock.EnsureMatcher(app), gomock.EnsureMatcher(appLife), gomock.EnsureMatcher(orderedScale), gomock.EnsureMatcher(facade), gomock.EnsureMatcher(applicationService), gomock.EnsureMatcher(arg8))
+	call := gomock.NewCall9_1[context.Context, string, application.UUID, caas.Application, life.Value, string, caasapplicationprovisioner.CAASProvisionerFacade, caasapplicationprovisioner.ApplicationService, logger.Logger, error](mr.mock.ctrl.T, mr.mock, "EnsureScale", gomock.EnsureMatcher(ctx), gomock.EnsureMatcher(appName), gomock.EnsureMatcher(appUUID), gomock.EnsureMatcher(app), gomock.EnsureMatcher(appLife), gomock.EnsureMatcher(deploymentType), gomock.EnsureMatcher(facade), gomock.EnsureMatcher(applicationService), gomock.EnsureMatcher(arg8))
 	mr.ensureScaleExpects = append(mr.ensureScaleExpects, call)
 	mr.mock.ctrl.Track(call.Call)
 	return call
 }
 
 // MockApplicationOpsEnsureScaleCall is the typed call wrapper for EnsureScale.
-type MockApplicationOpsEnsureScaleCall = gomock.Call9_1[context.Context, string, application.UUID, caas.Application, life.Value, bool, caasapplicationprovisioner.CAASProvisionerFacade, caasapplicationprovisioner.ApplicationService, logger.Logger, error]
+type MockApplicationOpsEnsureScaleCall = gomock.Call9_1[context.Context, string, application.UUID, caas.Application, life.Value, string, caasapplicationprovisioner.CAASProvisionerFacade, caasapplicationprovisioner.ApplicationService, logger.Logger, error]
 
 // EnsureTrust mocks base method.
 func (m *MockApplicationOps) EnsureTrust(ctx context.Context, appName string, app caas.Application, applicationService caasapplicationprovisioner.ApplicationService, arg4 logger.Logger) error {
@@ -200,22 +200,22 @@ func (mr *MockApplicationOpsMockRecorder) RefreshOperatorStatus(ctx, appName, ap
 type MockApplicationOpsRefreshOperatorStatusCall = gomock.Call8_1[context.Context, string, application.UUID, caas.Application, life.Value, caasapplicationprovisioner.StatusService, clock.Clock, logger.Logger, error]
 
 // UpdateState mocks base method.
-func (m *MockApplicationOps) UpdateState(ctx context.Context, appName string, appUUID application.UUID, app caas.Application, lastReportedStatus caasapplicationprovisioner.UpdateStatusState, broker caasapplicationprovisioner.CAASBroker, applicationService caasapplicationprovisioner.ApplicationService, statusService caasapplicationprovisioner.StatusService, clk clock.Clock, arg9 logger.Logger) (caasapplicationprovisioner.UpdateStatusState, error) {
+func (m *MockApplicationOps) UpdateState(ctx context.Context, appName string, appUUID application.UUID, app caas.Application, lastReportedStatus caasapplicationprovisioner.UpdateStatusState, deploymentType string, broker caasapplicationprovisioner.CAASBroker, applicationService caasapplicationprovisioner.ApplicationService, statusService caasapplicationprovisioner.StatusService, clk clock.Clock, arg10 logger.Logger) (caasapplicationprovisioner.UpdateStatusState, error) {
 	m.ctrl.T.Helper()
-	return gomock.Dispatch10_2(&m.recorder.updateStateExpects, m.ctrl, m, "UpdateState", ctx, appName, appUUID, app, lastReportedStatus, broker, applicationService, statusService, clk, arg9)
+	return gomock.Dispatch11_2(&m.recorder.updateStateExpects, m.ctrl, m, "UpdateState", ctx, appName, appUUID, app, lastReportedStatus, deploymentType, broker, applicationService, statusService, clk, arg10)
 }
 
 // UpdateState indicates an expected call of UpdateState.
-func (mr *MockApplicationOpsMockRecorder) UpdateState(ctx, appName, appUUID, app, lastReportedStatus, broker, applicationService, statusService, clk, arg9 any) *MockApplicationOpsUpdateStateCall {
+func (mr *MockApplicationOpsMockRecorder) UpdateState(ctx, appName, appUUID, app, lastReportedStatus, deploymentType, broker, applicationService, statusService, clk, arg10 any) *MockApplicationOpsUpdateStateCall {
 	mr.mock.ctrl.T.Helper()
-	call := gomock.NewCall10_2[context.Context, string, application.UUID, caas.Application, caasapplicationprovisioner.UpdateStatusState, caasapplicationprovisioner.CAASBroker, caasapplicationprovisioner.ApplicationService, caasapplicationprovisioner.StatusService, clock.Clock, logger.Logger, caasapplicationprovisioner.UpdateStatusState, error](mr.mock.ctrl.T, mr.mock, "UpdateState", gomock.EnsureMatcher(ctx), gomock.EnsureMatcher(appName), gomock.EnsureMatcher(appUUID), gomock.EnsureMatcher(app), gomock.EnsureMatcher(lastReportedStatus), gomock.EnsureMatcher(broker), gomock.EnsureMatcher(applicationService), gomock.EnsureMatcher(statusService), gomock.EnsureMatcher(clk), gomock.EnsureMatcher(arg9))
+	call := gomock.NewCall11_2[context.Context, string, application.UUID, caas.Application, caasapplicationprovisioner.UpdateStatusState, string, caasapplicationprovisioner.CAASBroker, caasapplicationprovisioner.ApplicationService, caasapplicationprovisioner.StatusService, clock.Clock, logger.Logger, caasapplicationprovisioner.UpdateStatusState, error](mr.mock.ctrl.T, mr.mock, "UpdateState", gomock.EnsureMatcher(ctx), gomock.EnsureMatcher(appName), gomock.EnsureMatcher(appUUID), gomock.EnsureMatcher(app), gomock.EnsureMatcher(lastReportedStatus), gomock.EnsureMatcher(deploymentType), gomock.EnsureMatcher(broker), gomock.EnsureMatcher(applicationService), gomock.EnsureMatcher(statusService), gomock.EnsureMatcher(clk), gomock.EnsureMatcher(arg10))
 	mr.updateStateExpects = append(mr.updateStateExpects, call)
 	mr.mock.ctrl.Track(call.Call)
 	return call
 }
 
 // MockApplicationOpsUpdateStateCall is the typed call wrapper for UpdateState.
-type MockApplicationOpsUpdateStateCall = gomock.Call10_2[context.Context, string, application.UUID, caas.Application, caasapplicationprovisioner.UpdateStatusState, caasapplicationprovisioner.CAASBroker, caasapplicationprovisioner.ApplicationService, caasapplicationprovisioner.StatusService, clock.Clock, logger.Logger, caasapplicationprovisioner.UpdateStatusState, error]
+type MockApplicationOpsUpdateStateCall = gomock.Call11_2[context.Context, string, application.UUID, caas.Application, caasapplicationprovisioner.UpdateStatusState, string, caasapplicationprovisioner.CAASBroker, caasapplicationprovisioner.ApplicationService, caasapplicationprovisioner.StatusService, clock.Clock, logger.Logger, caasapplicationprovisioner.UpdateStatusState, error]
 
 // WaitForTerminated mocks base method.
 func (m *MockApplicationOps) WaitForTerminated(appName string, app caas.Application, clk clock.Clock) error {
