@@ -13,14 +13,16 @@ bypass Juju intentionally.
 | Component      | Value |
 |----------------|-------|
 | Substrate      | microk8s (single-node) |
-| Charm          | `zinc-k8s` (Charmhub, latest/stable) |
+| Charms         | `zinc-k8s` (latest/stable, has storage → infers StatefulSet) |
+|                | `coredns` (1.35/edge, no storage → infers Deployment) |
 | Model          | `test-model` |
 | K8s namespace  | `test-model` |
 | Controller     | Built from branch `001-k8s-deployment-types` |
 
 ```bash
 # Variables used throughout
-APP=zinc-k8s
+APP=zinc-k8s       # For StatefulSet scenarios
+APP=coredns        # For Deployment/DaemonSet scenarios
 NS=test-model
 ```
 
@@ -406,32 +408,461 @@ fi
 
 ---
 
+## Scenario Group 6: CLI Operations
+
+These scenarios exercise juju CLI commands beyond scale/deploy/remove to verify
+they work identically for Deployment and StatefulSet workloads.
+
+**Charm**: Use `coredns` (channel 1.35/edge, no storage) for Deployment tests
+and `zinc-k8s` for StatefulSet tests, unless a scenario requires a specific charm.
+
+### S6.1 Configuration change
+
+**Setup**: Application deployed with 1 unit, active/idle.
+
+```bash
+# Set a config value
+juju config $APP <config-key>=<value>
+```
+
+| Check | Expected | Timeout |
+|-------|----------|---------|
+| Config applied | `juju config $APP <config-key>` returns new value | 30s |
+| Pod restarted with new config | Pod rolls out (new pod name for Deployment) | 120s |
+| Unit recovers | Unit active/idle after rollout | 120s |
+| Unit count unchanged | Still 1 unit, no phantoms | - |
+
+**Note**: Config changes trigger a pod rollout in K8s. For Deployment, the new pod
+has a different name — the unit must re-register via `RegisterCAASUnit`. For
+StatefulSet, the pod name is stable (rolling update in-place).
+
+### S6.2 SSH into unit
+
+**Setup**: Application deployed with 1 unit, active/idle.
+
+```bash
+juju ssh $APP/0 -- hostname
+```
+
+| Check | Expected |
+|-------|----------|
+| Command succeeds | Returns the pod hostname |
+| Hostname matches pod name | `microk8s kubectl get pods -n $NS -l app.kubernetes.io/name=$APP -o name` |
+
+**Expected behavior**: SSH targets pods by name via the exec API. This is
+deployment-type agnostic — works the same for all workload types.
+
+### S6.3 Run action on unit
+
+**Setup**: Application deployed with 1 unit, active/idle. Use a charm that has
+defined actions, or test with a generic command.
+
+```bash
+juju run $APP/0 -- hostname
+```
+
+| Check | Expected |
+|-------|----------|
+| Command succeeds | Returns output from the pod |
+| No errors | Exit code 0 |
+
+**Expected behavior**: Actions use the same pod exec mechanism as SSH. No
+deployment-type branching in the action facade.
+
+### S6.4 Expose and unexpose
+
+**Setup**: Application deployed with 1 unit, active/idle.
+
+```bash
+juju expose $APP
+```
+
+| Check | Expected |
+|-------|----------|
+| Service type changes | `microk8s kubectl get svc $APP -n $NS -o jsonpath='{.spec.type}'` shows expected type |
+| Application status | `juju status` shows exposed |
+
+```bash
+juju unexpose $APP
+```
+
+| Check | Expected |
+|-------|----------|
+| Service type reverts | Service type back to ClusterIP |
+| Application status | `juju status` shows not exposed |
+
+**Expected behavior**: Expose operates on the K8s Service resource, which is
+created for all deployment types. No deployment-type branching.
+
+### S6.5 Charm refresh (upgrade)
+
+**Setup**: Application deployed with 1 unit, active/idle.
+
+```bash
+juju refresh $APP --channel=<different-channel>
+```
+
+| Check | Deployment | StatefulSet |
+|-------|-----------|-------------|
+| Command result | **EXPECTED FAIL**: `NotSupported` | PASS: rolling update |
+| Error message | Clear error about deployment type | N/A |
+| Unit state after | Unchanged (still active) | Updated to new revision |
+| No crash | Worker does not restart-loop | N/A |
+
+**Known gap**: `upgradeMainResource()` in the K8s provider returns
+`errors.NotSupportedf` for Deployment and DaemonSet workloads
+(`internal/provider/kubernetes/application/application.go:594-597`).
+This is the most significant operational gap in the MVP. The test documents the
+current behavior; fixing it is post-MVP work.
+
+### S6.6 Remove unit by count
+
+**Setup**: Application scaled to 3, all active/idle.
+
+```bash
+juju remove-unit $APP --num-units 2
+```
+
+| Check | Expected | Timeout |
+|-------|----------|---------|
+| 1 unit remains | `juju status` shows 1 unit active/idle | 120s |
+| Pod count matches | 1 pod running | - |
+| Scale target updated | Application scale is 1 | - |
+
+**Comparison with `scale-application`**: `remove-unit --num-units` should behave
+identically to `scale-application` for CAAS models. Verify both paths produce
+the same result.
+
+### S6.7 Show unit details
+
+**Setup**: Application deployed with 2 units, both active/idle.
+
+```bash
+juju show-unit $APP/0 --format yaml
+juju show-unit $APP/1 --format yaml
+```
+
+| Check | Expected |
+|-------|----------|
+| Provider ID present | Each unit has a provider-id field |
+| Provider IDs unique | Different pod names |
+| Address present | Each unit has an address |
+| Machine field | Empty (CAAS model) |
+
+**Deployment difference**: Deployment provider IDs are random pod names
+(e.g., `coredns-7d8f9b6c4d-x2k9m`). StatefulSet provider IDs are ordinal
+(e.g., `zinc-k8s-0`). Both must be present and valid.
+
+---
+
+## Scenario Group 7: Relations and Integration
+
+These scenarios test that applications with different deployment types can
+integrate (relate) with each other correctly.
+
+### S7.1 Cross-type relation
+
+**Setup**: Deploy two applications — one as Deployment, one as StatefulSet.
+
+```bash
+juju deploy coredns --channel=1.35/edge --constraints deployment-type=stateless
+juju deploy zinc-k8s
+# Wait for both to be active
+```
+
+| Check | Expected |
+|-------|----------|
+| Both apps active | `juju status` shows both active/idle |
+| K8s resource types | Deployment for coredns, StatefulSet for zinc-k8s |
+
+If the two charms support a common relation:
+
+```bash
+juju integrate coredns zinc-k8s
+```
+
+| Check | Expected | Timeout |
+|-------|----------|---------|
+| Relation established | `juju status --relations` shows the relation | 60s |
+| Both apps still active | No errors from relation hooks | 120s |
+
+**Note**: coredns and zinc-k8s may not share a common relation interface. If not,
+use two charms that do (e.g., deploy a database charm and a web app charm). The
+key test is that relation hooks fire correctly regardless of the backing K8s
+workload type.
+
+### S7.2 Scale related application
+
+**Setup**: From S7.1 with both apps deployed and related.
+
+```bash
+juju scale-application coredns 3
+```
+
+| Check | Expected | Timeout |
+|-------|----------|---------|
+| Deployment scaled | 3 coredns units active | 120s |
+| Relation intact | Relation still shows in `juju status --relations` | - |
+| StatefulSet app unaffected | zinc-k8s unchanged | - |
+
+---
+
+## Scenario Group 8: Model-Level Operations
+
+### S8.1 Destroy model with active Deployment
+
+**Setup**: Model with a Deployment application (possibly scaled).
+
+```bash
+juju deploy coredns --channel=1.35/edge --constraints deployment-type=stateless -m test-model
+juju wait-for application coredns --query='status=="active"' --timeout=5m -m test-model
+juju scale-application coredns 3 -m test-model
+# Wait for all 3 active
+juju destroy-model test-model --no-prompt
+```
+
+| Check | Expected | Timeout |
+|-------|----------|---------|
+| Model removed | `juju models` no longer shows test-model | 300s |
+| K8s namespace cleaned | `microk8s kubectl get ns test-model` returns NotFound | 300s |
+| No orphaned resources | No pods, deployments, services in namespace | - |
+
+**Comparison**: Repeat with StatefulSet (zinc-k8s, no constraint). Both must
+clean up completely. This exercises the model teardown path including the
+remove-application race under time pressure.
+
+### S8.2 Export bundle preserves constraint
+
+**Setup**: Application deployed with explicit `deployment-type=stateless` constraint.
+
+```bash
+juju deploy coredns --channel=1.35/edge --constraints deployment-type=stateless
+# Wait for active
+juju export-bundle --filename=/tmp/bundle.yaml
+```
+
+| Check | Expected |
+|-------|----------|
+| Bundle file exists | `/tmp/bundle.yaml` written |
+| Constraint preserved | `grep deployment-type /tmp/bundle.yaml` shows `deployment-type=stateless` |
+| Re-deployable | Deploying from the bundle file produces a Deployment (not StatefulSet) |
+
+**Why this matters**: If the constraint is lost during export, redeployments from
+the bundle would silently switch to a different workload type.
+
+### S8.3 Juju status format consistency
+
+**Setup**: Application deployed as Deployment with 2 units.
+
+```bash
+juju status
+juju status --format json
+juju status --format yaml
+```
+
+| Check | Expected |
+|-------|----------|
+| Tabular output | Shows units with addresses and provider IDs |
+| JSON output | Valid JSON; units have `provider-id` and `address` fields |
+| YAML output | Valid YAML; same fields as JSON |
+| No "machine" field | CAAS units should not show machine assignments |
+
+---
+
+## Scenario Group 9: DaemonSet-Specific
+
+DaemonSet workloads (`deployment-type=daemon`) have fundamentally different
+scaling semantics: pod count equals node count, not a user-specified replica count.
+These scenarios use a single-node microk8s cluster (1 node = 1 pod).
+
+**Charm**: Use `coredns` (channel 1.35/edge, no storage) for DaemonSet tests.
+
+### S9.1 Deploy as DaemonSet
+
+```bash
+juju deploy coredns --channel=1.35/edge --constraints deployment-type=daemon
+```
+
+| Check | Expected | Timeout |
+|-------|----------|---------|
+| K8s resource type | `microk8s kubectl get daemonset coredns -n $NS` exists | 120s |
+| Pod count | 1 pod (single-node cluster) | 120s |
+| Unit registered | `juju status` shows `coredns/0` active/idle | 120s |
+
+### S9.2 Scale-application is rejected or no-op
+
+```bash
+juju scale-application coredns 3
+```
+
+| Check | Expected |
+|-------|----------|
+| Pod count | Still 1 (node-driven, not replica-driven) |
+| Behavior | Either error message, or Juju records scale=3 but K8s stays at 1 |
+| No crash | Worker does not restart-loop |
+
+**Note**: On a single-node cluster, DaemonSet always runs exactly 1 pod. The
+`Scale()` provider method returns `NotSupportedf` for DaemonSet. The test
+documents how `scale-application` interacts with this limitation.
+
+### S9.3 Pod deletion recovery
+
+**Setup**: DaemonSet deployed, 1 unit active/idle.
+
+```bash
+POD=$(microk8s kubectl get pods -n $NS -l app.kubernetes.io/name=coredns -o name | head -1)
+microk8s kubectl delete $POD -n $NS
+```
+
+| Check | Expected | Timeout |
+|-------|----------|---------|
+| Replacement pod created | DaemonSet controller creates new pod | 30s |
+| Unit recovers | `coredns/0` active/idle with new IP | 90s |
+| No extra units | Still exactly 1 unit | - |
+
+### S9.4 Remove DaemonSet application
+
+```bash
+juju remove-application coredns
+```
+
+| Check | Expected | Timeout |
+|-------|----------|---------|
+| Model empty | `juju status` shows no applications | 180s |
+| K8s cleanup | No coredns daemonset, pods, or services in namespace | - |
+
+### S9.5 DaemonSet charm refresh
+
+```bash
+juju refresh coredns --channel=<different-channel>
+```
+
+| Check | Expected |
+|-------|----------|
+| Command result | **EXPECTED FAIL**: `NotSupported` (same as Deployment) |
+| Unit state after | Unchanged (still active) |
+| No crash | Worker does not restart-loop |
+
+**Same known gap as S6.5.**
+
+---
+
+## Scenario Group 10: Inference Verification
+
+These scenarios verify that the deployment type inference engine correctly selects
+the workload type based on charm metadata.
+
+### S10.1 Storage charm infers StatefulSet
+
+```bash
+juju deploy zinc-k8s  # Has storage declaration
+```
+
+| Check | Expected |
+|-------|----------|
+| K8s resource | StatefulSet (not Deployment) |
+| Inference reason | Charm declares `data` storage at `/zinc-data` |
+
+### S10.2 Storageless charm infers Deployment
+
+```bash
+juju deploy coredns --channel=1.35/edge  # No storage declaration
+```
+
+| Check | Expected |
+|-------|----------|
+| K8s resource | Deployment (not StatefulSet) |
+| Inference reason | No storage declared in charm metadata |
+
+### S10.3 Explicit constraint overrides inference
+
+```bash
+juju deploy zinc-k8s --constraints deployment-type=stateless
+```
+
+| Check | Expected |
+|-------|----------|
+| K8s resource | Deployment (despite charm having storage) |
+| Warning | Advisory warning about storage with non-StatefulSet workload (FR-012) |
+
+### S10.4 Explicit stateful constraint on storageless charm
+
+```bash
+juju deploy coredns --channel=1.35/edge --constraints deployment-type=stateful
+```
+
+| Check | Expected |
+|-------|----------|
+| K8s resource | StatefulSet (despite charm having no storage) |
+| Unit active | `coredns/0` active/idle |
+
+---
+
 ## Execution Matrix
 
-Each scenario must pass for **both** workload types:
+Each scenario must pass for **both** workload types unless noted otherwise.
+DaemonSet scenarios (S9.x) are only tested with `deployment-type=daemon`.
+Inference scenarios (S10.x) test specific type assignments.
 
 | Scenario | Deployment (stateless) | StatefulSet (default) | Notes |
 |----------|:---------------------:|:--------------------:|-------|
+| **Group 1: Lifecycle** | | | |
 | S1.1 Deploy | PASS | PASS | |
-| S1.2 Scale 1 -> 3 | PASS | FAIL (2/3) | Pre-existing storage provisioner bug |
-| S1.3 Scale 3 -> 1 | PASS | PASS | |
-| S1.4 Scale 1 -> 2 | FAIL (1/2) | PASS | Cascade from S1.3 state / intermittent |
+| S1.2 Scale 1 → 3 | PASS | FAIL (2/3) | Pre-existing storage provisioner bug |
+| S1.3 Scale 3 → 1 | PASS | PASS | |
+| S1.4 Scale 1 → 2 | FAIL (1/2) | PASS | Cascade from S1.3 state / intermittent |
 | S1.5 Remove | PASS | PASS | |
 | S1.6 Redeploy ordinal | PASS | PASS | |
+| **Group 2: Substrate Chaos** | | | |
 | S2.1 Single pod kill (scale=1) | PASS | PASS | |
 | S2.2 Single pod kill (scale=3) | PASS | PASS | |
 | S2.3 All pods killed (scale=3) | KNOWN-LIM (2/3) | PASS | Filesystem attachment race (pre-existing) |
 | S2.4 Rapid pod cycling | - | - | Not yet tested |
 | S2.5 Pod kill during scale-up | - | - | Not yet tested |
 | S2.6 Pod kill during scale-down | - | - | Not yet tested |
+| **Group 3: Removal/Redeploy** | | | |
 | S3.1 Remove + redeploy | - | - | Covered by S1.5+S1.6 |
 | S3.2 Remove scaled + redeploy | - | - | Not yet tested |
 | S3.3 Redeploy as different type | - | - | Not yet tested |
+| **Group 4: Worker Restart** | | | |
 | S4.1 Controller restart | - | - | Not yet tested |
 | S4.2 Controller restart + pod kill | - | - | Not yet tested |
+| **Group 5: Edge Cases** | | | |
 | S5.1 Scale 0 and back | FAIL (cascade) | PASS | Deployment: cascade from S2.3 stuck unit |
 | S5.2 Rapid scale oscillation | - | - | Not yet tested |
 | S5.3 Kill starting pod | - | - | Not yet tested |
+| **Group 6: CLI Operations** | | | |
+| S6.1 Config change | - | - | Not yet tested |
+| S6.2 SSH into unit | - | - | Not yet tested |
+| S6.3 Run action | - | - | Not yet tested |
+| S6.4 Expose/unexpose | - | - | Not yet tested |
+| S6.5 Charm refresh | EXPECT FAIL | PASS (baseline) | `upgradeMainResource` returns NotSupported |
+| S6.6 Remove unit by count | - | - | Not yet tested |
+| S6.7 Show unit details | - | - | Not yet tested |
+| **Group 7: Relations** | | | |
+| S7.1 Cross-type relation | - | - | Not yet tested |
+| S7.2 Scale related app | - | - | Not yet tested |
+| **Group 8: Model Operations** | | | |
+| S8.1 Destroy model | - | - | Not yet tested |
+| S8.2 Export bundle constraint | - | - | Not yet tested |
+| S8.3 Status format consistency | - | - | Not yet tested |
+
+| Scenario | DaemonSet (daemon) | Notes |
+|----------|:-----------------:|-------|
+| **Group 9: DaemonSet** | | |
+| S9.1 Deploy as DaemonSet | - | Not yet tested |
+| S9.2 Scale rejected/no-op | - | Not yet tested; Scale() returns NotSupported |
+| S9.3 Pod deletion recovery | - | Not yet tested |
+| S9.4 Remove DaemonSet app | - | Not yet tested |
+| S9.5 DaemonSet charm refresh | EXPECT FAIL | `upgradeMainResource` returns NotSupported |
+
+| Scenario | Type | Notes |
+|----------|:----:|-------|
+| **Group 10: Inference** | | |
+| S10.1 Storage → StatefulSet | StatefulSet | Not yet tested |
+| S10.2 No storage → Deployment | Deployment | Not yet tested |
+| S10.3 Explicit override | Deployment | Not yet tested; zinc-k8s with stateless |
+| S10.4 Explicit stateful on storageless | StatefulSet | Not yet tested |
 
 **Run date**: 2026-02-10
 
@@ -450,6 +881,30 @@ Each scenario must pass for **both** workload types:
 
 3. **Remove-application race**: `remove-application` can leave orphaned K8s resources.
    The test script handles this by cleaning up orphans after each removal.
+
+### Known Gaps (Deployment/DaemonSet)
+
+These are functional gaps identified through code analysis where StatefulSet
+has working behavior but Deployment/DaemonSet does not:
+
+1. **Charm refresh blocked** (HIGH): `upgradeMainResource()` in
+   `internal/provider/kubernetes/application/application.go:594-597` returns
+   `errors.NotSupportedf` for Deployment and DaemonSet. Users cannot upgrade
+   charms deployed with non-StatefulSet workload types. The function handles
+   init container image rebuilds and annotation upgrades only for StatefulSet.
+   **Scenarios**: S6.5, S9.5.
+
+2. **PVC orphaning on removal** (HIGH): For Deployment/DaemonSet, PVCs created
+   by `handlePVCForStatelessResource` are standalone (not tied to
+   `volumeClaimTemplates`). The `Delete()` method never deletes them, so PVCs
+   persist indefinitely after `remove-application`. StatefulSet PVCs are
+   garbage-collected by K8s. Only affects charms deployed with storage AND an
+   explicit `deployment-type=stateless` override.
+
+3. **Migration may lose deployment type** (MEDIUM): The `description/v11`
+   migration serialization may not include the `deployment-type` constraint
+   field, meaning cross-controller migration could silently reset the workload
+   type to the inferred default.
 
 ---
 
