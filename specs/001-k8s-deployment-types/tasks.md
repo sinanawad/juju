@@ -159,9 +159,9 @@
 
 ---
 
-## Phase 7: Polish & Cross-Cutting Concerns
+## Cross-Cutting Tests (Post-Implementation Validation)
 
-**Purpose**: Validation, cleanup, and verification across all stories.
+**Purpose**: Validation, cleanup, and verification across all stories. Run after all implementation phases are complete.
 
 ### Test Runs
 
@@ -174,10 +174,10 @@
 
 ### New Tests Required (Constitution IV — Test Discipline)
 
-- [ ] T050 [US1+2+4] Add unit tests for `RegisterCAASUnit` with `OrderedScale=false` in `domain/application/state/state_test.go` — verify Deployment/DaemonSet units can register when `ordinal < appScale.Scale` even when `Scaling=false`; verify rejection when `ordinal >= appScale.Scale`
-- [ ] T051 [US1+2+4] Add unit tests for `GetCAASUnitNameByProviderID` in `domain/application/state/state_test.go` — verify lookup returns correct unit name for known provider ID; returns `(empty, false, nil)` for unknown provider ID
-- [ ] T052 [US1+2+4] Add unit tests for `GetNextCAASUnitOrdinal` in `domain/application/state/state_test.go` — verify returns 0 for app with no units; returns `max+1` for app with existing units; handles gaps correctly
-- [ ] T053 [US1+2+4] Add unit tests for `RegisterCAASUnit` service-layer branching in `domain/application/service/provider_test.go` — verify StatefulSet derives ordinal from pod name; Deployment looks up by provider ID then falls back to next ordinal
+- [ ] T055 [US1+2+4] Add unit tests for `RegisterCAASUnit` with `OrderedScale=false` in `domain/application/state/state_test.go` — verify Deployment/DaemonSet units can register when `ordinal < appScale.Scale` even when `Scaling=false`; verify rejection when `ordinal >= appScale.Scale`
+- [ ] T056 [US1+2+4] Add unit tests for `GetCAASUnitNameByProviderID` in `domain/application/state/state_test.go` — verify lookup returns correct unit name for known provider ID; returns `(empty, false, nil)` for unknown provider ID
+- [ ] T057 [US1+2+4] Add unit tests for `GetNextCAASUnitOrdinal` in `domain/application/state/state_test.go` — verify returns 0 for app with no units; returns `max+1` for app with existing units; handles gaps correctly
+- [ ] T058 [US1+2+4] Add unit tests for `RegisterCAASUnit` service-layer branching in `domain/application/service/provider_test.go` — verify StatefulSet derives ordinal from pod name; Deployment looks up by provider ID then falls back to next ordinal
 
 ---
 
@@ -193,7 +193,7 @@
 - **Story 3 (Phase 4)**: Depends on Phase 3 (deployment type must be persistable/queryable)
 - **Story 5 (Phase 5)**: Depends on Phase 3 (deployment type must be persisted)
 - **Migration (Phase 6)**: Depends on Phase 3; T040–T043 are a **release blocker** (external dep on `description` library)
-- **Polish (Phase 7)**: Depends on all story phases being complete
+- **Cross-Cutting Tests**: Depends on all implementation phases being complete (T030-T035 run after Phases 3-6; T055-T058 run after Phase 3b)
 
 ### User Story Dependencies
 
@@ -208,11 +208,19 @@ Phase 1 (Setup)
                         └──> Phase 6 (Migration) ⚠️ T040-T043 = RELEASE BLOCKER
                                     └──> Phase 7 (Pod Recovery)
                                                 └──> Phase 8 (Resilience Testing)
+                                                          └──> Phase 9 (US7: Storage attachment cleanup) ← P1 GATE
+                                                                    ├──> Phase 10 (US8: PVC cleanup) ← P1
+                                                                    │         └──> Phase 13 (US8: PVC scaling)
+                                                                    ├──> Phase 11 (US9+10: Access mode) ← P2
+                                                                    └──> Phase 12 (US11: Ephemeral) ← P2
+                                                                    Phases 10-13 all complete ──> Phase 14 (Test runs)
 ```
 
 - **Story 3 and Story 5 are independent of each other** — they can run in parallel after Phase 3
 - **Story 1+2+4 is the MVP** — once complete, the core feature works end-to-end
 - **Phase 8 depends on Phase 7** — resilience testing validates pod recovery + all prior phases
+- **Phase 9 is the gate** for all storage stories — extends existing pod recovery with storage cleanup
+- **Phases 10, 11, 12 are independent** — can run in parallel after Phase 9
 
 ### Within Each Phase
 
@@ -266,6 +274,13 @@ Phase 5 (US5: T023-T029)  ─┘── parallel (different layers, no dependenci
 3. Add Phase 5 (Story 5) → Status visibility → Test independently
 4. Phase 6 → Full validation pass
 5. Each story adds value without breaking previous stories
+
+### Storage Adaptation (Post-MVP)
+
+6. Phase 9 (US7) → Storage attachment cleanup → **GATE** for all storage work
+7. Phases 10 + 11 + 12 in parallel → PVC cleanup + access mode warnings + ephemeral validation
+8. Phase 13 → PVC scaling stability verification
+9. Phase 14 → Full test run across all storage-modified packages
 
 ---
 
@@ -357,6 +372,218 @@ Phase 5 (US5: T023-T029)  ─┘── parallel (different layers, no dependenci
 
 ---
 
+## Phase 9: User Story 7 — Storage Attachment Cleanup on Pod Replacement (Priority: P1)
+
+**Goal**: When the worker clears a stale `k8s_pod` entry for a replaced Deployment/DaemonSet pod, also cascade-delete the stale `storage_filesystem_attachment` and `storage_volume_attachment` records for that unit's net_node. This prevents duplicate key errors during re-registration with storage.
+
+**Independent Test**: Deploy Deployment with persistent storage → delete pod → verify replacement pod re-registers without duplicate key errors and remounts storage.
+
+**Validates**: FR-014 | SC-008
+
+**Depends on**: Phase 7 (T050-T054 must be complete — `ClearCAASUnitCloudContainer` must exist before extending it)
+
+### State Layer: Cascade Storage Attachment Cleanup
+
+- [ ] T070 [US7] Extend `ClearCAASUnitCloudContainer()` in `domain/application/state/unit.go` (line ~2180) to add DELETE statements within the existing `db.Txn()` block for `storage_filesystem_attachment` rows where `net_node_uuid` matches the unit's net_node, and `storage_volume_attachment` rows where `net_node_uuid` matches the unit's net_node. Use the same subquery pattern already used for `k8s_pod` deletion: `WHERE net_node_uuid = (SELECT net_node_uuid FROM unit WHERE name = $unitName.name)`. Ensure DELETE order respects foreign key constraints (filesystem/volume attachments before any parent rows).
+
+- [ ] T071 [US7] Add unit tests in `domain/application/state/unit_test.go` for the extended `ClearCAASUnitCloudContainer`:
+  - Test that after clearing, `storage_filesystem_attachment` rows for the target unit's net_node are deleted while rows for other units remain.
+  - Test that after clearing, `storage_volume_attachment` rows for the target unit's net_node are deleted while rows for other units remain.
+  - Test idempotency: calling on a unit with no storage attachments completes without error.
+  - Test that `k8s_pod` and `k8s_pod_port` rows are still deleted (no regression from T050).
+
+- [ ] T072 [US7] Regenerate mocks if the state interface signature changed: `go generate ./domain/application/service/...`
+
+**Checkpoint**: `ClearCAASUnitCloudContainer` now atomically clears cloud container AND storage attachment records. Replacement pods can re-register with fresh storage bindings.
+
+---
+
+## Phase 10: User Story 8 — PVC Cleanup on Non-StatefulSet Application Removal (Priority: P1)
+
+**Goal**: When a Deployment or DaemonSet application is removed, delete all Juju-created standalone PVCs from the K8s namespace. StatefulSet PVC behavior is unchanged.
+
+**Independent Test**: Deploy Deployment with storage → verify PVCs exist → `juju remove-application` → verify PVCs deleted from namespace.
+
+**Validates**: FR-015 | SC-009
+
+**Depends on**: Phase 9 (storage attachment cleanup must work before testing full PVC lifecycle)
+
+### K8s Provider: PVC Deletion in Delete()
+
+- [ ] T073 [US8] In `Delete()` in `internal/provider/kubernetes/application/application.go` (after the DaemonSet listing block around line ~1199, before `applier.Delete()` at line ~1210), add PVC listing and deletion for non-StatefulSet workloads:
+  - List PVCs using `resources.ListPersistentVolumeClaims()` with the existing `resourceLabels` selector (same `utils.LabelsForAppCreated()` labels used for all other resources)
+  - Append matching PVCs to the `resourcesToDelete` slice (same pattern as StatefulSets, Services, Secrets, etc.)
+  - Guard: only list and delete PVCs when `a.deploymentType != caas.DeploymentStateful` — StatefulSet PVCs are managed by K8s VolumeClaimTemplates retention policy
+
+- [ ] T074 [US8] Remove or update the TODO comment at `internal/provider/kubernetes/application/application.go:186`: `// TODO: storage handling for deployment/daemonset enhancement.` — replace with a brief comment noting that PVC cleanup is handled in `Delete()`.
+
+- [ ] T075 [P] [US8] Add unit tests in `internal/provider/kubernetes/application/application_test.go` for PVC cleanup in `Delete()`:
+  - Test Deployment removal: PVCs with Juju app labels are listed and deleted
+  - Test DaemonSet removal: PVCs with Juju app labels are listed and deleted
+  - Test StatefulSet removal: no PVC listing or deletion occurs (PVCs unchanged)
+  - Test idempotency: calling Delete() when no PVCs exist completes without error
+
+**Checkpoint**: `juju remove-application` for Deployment/DaemonSet now cleans up standalone PVCs. StatefulSet behavior unchanged.
+
+**Caveat**: SC-009 ("zero PVCs within 60s") depends on `Delete()` being called. The pre-existing `remove-application` race can prevent this. The race fix is out of scope (see spec.md Known Bugs).
+
+---
+
+## Phase 11: User Story 9+10 — Storage Access Mode Validation (Priority: P2)
+
+**Goal**: Warn operators at deploy time when storage access modes are incompatible with the workload type. The warning is non-blocking — deployment proceeds.
+
+**Independent Test**: Deploy storage-bearing charm as Deployment with RWO storage at scale=3 → verify non-blocking warning in both CLI and controller logs.
+
+**Validates**: FR-016 | SC-010
+
+**Depends on**: Phase 9 (storage foundation must be in place)
+
+### Worker: Access Mode Warning
+
+- [ ] T076 [US9+10] In `internal/worker/caasapplicationprovisioner/ops.go` (near line 260, alongside the existing stateless+storage warning), add access mode validation:
+  - For each storage declaration in `pi.CharmMeta.Storage`, determine the access mode from the charm storage metadata and Juju storage pool config available in provisioning info. The access mode default is `ReadWriteOnce` unless explicitly overridden in the storage pool. **Do NOT import** `internal/provider/kubernetes/storage/` — that violates Constitution Principles II and VI. Instead, read the access mode from the storage constraints already available in provisioning info (e.g., `pi.Filesystems[].Attributes["storage-mode"]`), or define a simple helper in the worker package itself.
+  - If `pi.DeploymentType == "stateless"` AND access mode is `ReadWriteOnce` AND requested scale > 1: emit `logger.Warningf()` with message: "application %q uses deployment-type=stateless with ReadWriteOnce storage %q at scale %d; pods on different nodes may fail to mount. Consider using a ReadWriteMany storage class"
+  - If `pi.DeploymentType == "daemon"` AND access mode is `ReadWriteOnce`: emit `logger.Warningf()` with message: "application %q uses deployment-type=daemon with ReadWriteOnce storage %q; pods on nodes other than the PV-bound node will fail to mount. Consider using a ReadWriteMany storage class or ephemeral storage"
+  - Skip the check if storage provider type is `rootfs` or `tmpfs` (ephemeral — no PVC involved)
+
+### CLI: Surface Warning to Operator
+
+- [ ] T077 [US9+10] Surface the access mode warning to the CLI via the application's status message. The T020 stateless+storage warning is only emitted via `logger.Warningf()` to controller logs — CLI users don't see it. To surface to operators: after emitting the logger warning in T076, call `SetOperatorStatus()` with a warning-level status message containing the access mode text (application-level warning, not per-unit). This makes the warning visible in `juju status` output. Location: `internal/worker/caasapplicationprovisioner/ops.go` (same function as T076, immediately after the logger call).
+
+### Tests
+
+- [ ] T079 [P] [US9+10] Add unit tests in `internal/worker/caasapplicationprovisioner/ops_test.go` for access mode validation:
+  - Deployment + RWO + scale=1: no warning emitted
+  - Deployment + RWO + scale=3: warning emitted containing "ReadWriteOnce" and "ReadWriteMany"
+  - Deployment + RWX + scale=3: no warning emitted
+  - DaemonSet + RWO: warning emitted containing "ReadWriteOnce"
+  - DaemonSet + ephemeral (tmpfs): no warning emitted
+  - StatefulSet + RWO: no warning emitted (RWO is expected per-pod for StatefulSet)
+
+**Checkpoint**: Operators deploying Deployment/DaemonSet with RWO storage see a clear non-blocking warning in both controller logs and CLI output.
+
+**Note**: K8s `StorageClass` objects do not expose supported access modes. The validation checks the access mode from Juju storage pool config (default: ReadWriteOnce). The system cannot dynamically determine if a storage class supports RWX.
+
+---
+
+## Phase 12: User Story 11 — Ephemeral Storage for Stateless Workloads (Priority: P2)
+
+**Goal**: Verify and ensure that EmptyDir/tmpfs storage works correctly for Deployment and DaemonSet workloads without creating PVCs.
+
+**Independent Test**: Deploy charm with tmpfs storage as Deployment → verify EmptyDir mounts → scale to 3 → verify each pod has independent ephemeral volume → delete pod → verify replacement gets fresh volume.
+
+**Validates**: FR-017 | SC-011
+
+**Depends on**: Phase 9 (extended `ClearCAASUnitCloudContainer` must handle units with no storage attachments)
+
+### Verification and Validation
+
+- [ ] T080 [US11] Trace the existing code path to confirm EmptyDir/tmpfs works for Deployment/DaemonSet: `VolumeSourceForFilesystem()` in `internal/provider/kubernetes/storage/storage.go` (line 57) returns non-nil `VolumeSource` for `rootfs` and `tmpfs` → `filesystemToVolumeInfo()` in `internal/provider/kubernetes/application/application.go` (line ~2302) bypasses PVC creation when `VolumeSource != nil` → `Ensure()` applies the pod spec with EmptyDir volumes. Verify no code path differences exist between StatefulSet and Deployment/DaemonSet for this flow. If differences exist, document and fix them.
+
+- [ ] T081 [US11] Verify that the `ClearCAASUnitCloudContainer` extension (T070) handles units with no storage attachments gracefully — the DELETE statements for `storage_filesystem_attachment` and `storage_volume_attachment` should be no-ops when no rows match the unit's net_node. This is critical for ephemeral-only workloads where pods are replaced but no storage attachment records exist.
+
+### Tests
+
+- [ ] T082 [P] [US11] Add unit tests in `internal/provider/kubernetes/application/application_test.go` for ephemeral storage with Deployment/DaemonSet:
+  - Deployment + rootfs storage: EmptyDir volume created in pod spec, no PVCs created
+  - DaemonSet + tmpfs storage: EmptyDir with Memory medium in pod spec, no PVCs created
+  - Mixed (persistent + ephemeral): persistent storage gets shared PVC, ephemeral gets per-pod EmptyDir
+
+- [ ] T083 [P] [US11] Add unit test in `domain/application/state/unit_test.go` verifying `ClearCAASUnitCloudContainer` completes without error when the unit has no `storage_filesystem_attachment` or `storage_volume_attachment` rows (ephemeral-only unit scenario)
+
+**Checkpoint**: EmptyDir/tmpfs storage confirmed working for all deployment types. No PVCs created. Pod replacement creates fresh ephemeral volumes.
+
+---
+
+## Phase 13: User Story 8 Supplement — PVC Stability During Scaling (Priority: P2)
+
+**Goal**: Verify that scale operations on Deployment/DaemonSet do not create or delete PVCs. The shared PVC remains stable regardless of replica count changes.
+
+**Independent Test**: Deploy Deployment with storage at scale=1 → scale to 3 → verify single PVC → scale to 1 → verify PVC remains → scale to 3 → verify same PVC.
+
+**Validates**: FR-018
+
+**Depends on**: Phase 10 (PVC lifecycle must be understood before testing scaling behavior)
+
+### Verification and Validation
+
+- [ ] T084 [US8] Trace the `Ensure()` flow in `internal/provider/kubernetes/application/application.go` for Deployment/DaemonSet when an application already exists (scale change). Verify that:
+  - `handlePVCForStatelessResource` uses `Apply()` semantics (create-or-update via `resources.NewPersistentVolumeClaim`), making re-calls on existing PVCs a no-op
+  - Scale changes only modify the Deployment's `replicas` field, not PVC configuration
+  - Scale-down does NOT trigger PVC deletion (PVCs are only deleted in `Delete()`, not during scale operations)
+
+### Tests
+
+- [ ] T085 [P] [US8] Add unit tests in `internal/provider/kubernetes/application/application_test.go` for PVC stability during scaling:
+  - Scale up from 1 to 3: verify no new PVCs created (same PVC count before and after)
+  - Scale down from 3 to 1: verify no PVCs deleted
+  - Scale up after scale-down (1 → 3 → 1 → 3): verify PVC count remains 1 throughout
+
+**Checkpoint**: PVC count is stable across all scaling operations. Shared PVC model works correctly for Deployment/DaemonSet.
+
+---
+
+## Phase 14: Storage Stories — Test Runs and Integration
+
+**Purpose**: Run test suites for all packages modified by storage stories. Cross-cutting validation.
+
+- [ ] T086 Run `go test ./domain/application/state/...` to verify storage attachment cascade cleanup (T070-T071) and ephemeral no-op (T083)
+- [ ] T087 Run `go test ./domain/application/service/...` to verify mock regeneration (T072) didn't break existing tests
+- [ ] T088 Run `go test ./internal/provider/kubernetes/application/...` to verify PVC cleanup in Delete() (T075), ephemeral storage (T082), and PVC scaling stability (T085)
+- [ ] T089 Run `go test ./internal/worker/caasapplicationprovisioner/...` to verify access mode warnings (T079)
+- [ ] T090 Run `make go-build` to verify no compilation errors across all modified packages
+
+**Checkpoint**: All storage adaptation tests pass. No regressions in existing MVP tests.
+
+---
+
+## Storage Stories — Dependencies & Execution Order
+
+### Phase Dependencies
+
+- **Phase 9 (US7)**: Depends on Phase 7 (T050-T054 complete). **GATE** for all storage stories.
+- **Phase 10 (US8)**: Depends on Phase 9 (storage attachment cleanup must work)
+- **Phase 11 (US9+10)**: Depends on Phase 9 (storage foundation in place). Independent of Phase 10.
+- **Phase 12 (US11)**: Depends on Phase 9 (ClearCAASUnitCloudContainer must handle no-op). Independent of Phase 10, 11.
+- **Phase 13 (US8 suppl.)**: Depends on Phase 10 (PVC lifecycle understood). Independent of Phase 11, 12.
+- **Phase 14 (Test runs)**: Depends on all story phases (9-13) being complete.
+
+### Dependency Graph
+
+```
+Phase 8 (Resilience Testing — MVP)
+    └──> Phase 9 (US7: Storage attachment cleanup) ← P1 GATE
+              ├──> Phase 10 (US8: PVC cleanup on removal) ← P1
+              │         └──> Phase 13 (US8: PVC scaling stability) ← P2
+              ├──> Phase 11 (US9+10: Access mode validation) ← P2
+              └──> Phase 12 (US11: Ephemeral storage) ← P2
+              Phases 10-13 all complete ──> Phase 14 (Test runs)
+```
+
+### Parallel Opportunities
+
+**After Phase 9 completes** (3 independent tracks):
+```
+Phase 10 (T073-T075) ─┐
+Phase 11 (T076-T077, T079) ┤── parallel (different files, different layers)
+Phase 12 (T080-T083)  ─┘
+```
+
+**After Phase 10 completes**:
+```
+Phase 13 (T084-T085) ── can start immediately
+```
+
+### Implementation Strategy (Storage Stories)
+
+1. **Phase 9 first** — small, focused change to `ClearCAASUnitCloudContainer`. This is the gate.
+2. **Phases 10, 11, 12 in parallel** — different files, different layers. Can be done simultaneously.
+3. **Phase 13 after Phase 10** — verification/testing of PVC scaling behavior.
+4. **Phase 14 last** — run all test suites to confirm no regressions.
+
+---
+
 ## Notes
 
 - FR-009 (silently ignore deployment-type on IAAS) requires no new code — the existing constraint
@@ -371,7 +598,21 @@ Phase 5 (US5: T023-T029)  ─┘── parallel (different layers, no dependenci
 - Story 3 and Story 5 are fully independent of each other and can be implemented in either order
 - No new packages are created — all changes fit within existing directory structure
 - ~~Provider layer (`internal/provider/kubernetes/application/`) requires NO changes — it already supports all 3 types~~ **CORRECTED**: Provider layer required `currentScale()` and `computeStatus()` implementations for Deployment/DaemonSet (T044, T045). The scaffolding existed but returned `NotSupported`.
-- Edge case 2 (DaemonSet + non-shared storage access mode): Deferred — the provider layer
-  already uses standalone PVCs for DaemonSets (`handlePVCForStatelessResource`), avoiding the
-  identity-dependent VolumeClaimTemplate pattern. No additional validation needed for MVP.
+- Edge case 2 (DaemonSet + non-shared storage access mode): Addressed by Phase 11 (US9+10,
+  T076-T079). The worker emits a non-blocking warning when DaemonSet storage uses ReadWriteOnce
+  access mode. The provider layer uses standalone PVCs (`handlePVCForStatelessResource`).
 - ~~**K8s provider gaps (pre-existing, not blockers)**: `computeStatus()` only fully implemented for StatefulSet (returns `NotSupported` for Deployment/DaemonSet)~~ **CORRECTED**: `computeStatus()` and `currentScale()` are now implemented for all 3 types (T044, T045). `Exists()` still only checks the stored deployment type (no cross-type detection); no drift detection for manual kubectl edits. These remaining gaps can be addressed in a follow-up PR.
+- **Storage stories (T070-T090)**: Added 2026-02-10 after storage codebase research session.
+  Task IDs start at T070 to avoid collision with existing T050-T065 range.
+- FR-016 access mode warning is non-blocking (per clarification Q2). The system warns but does not
+  block deployment because the operator explicitly overrode the inference heuristic.
+- SC-009 (zero PVCs after removal) depends on `Delete()` being called. The pre-existing
+  `remove-application` race (spec.md Known Bugs) can prevent this. Race fix is out of scope.
+- US8 scenario 4 (force-remove with `--force`): Satisfied by existing Juju labels on
+  standalone PVCs (`app.kubernetes.io/managed-by=juju`, `app.kubernetes.io/name={appName}`).
+  The `--force` path triggers the same `Delete()` flow with the same label-based cleanup.
+  No additional task needed.
+- The `FilesystemProvisioningInfo()` facade stub is out of scope (per clarification Q1).
+  US9 scaling with storage depends on this facade being implemented separately.
+- Ephemeral storage (US11) is largely a verification exercise — the existing `VolumeSourceForFilesystem()`
+  code path already handles EmptyDir/tmpfs for all deployment types.

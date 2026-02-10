@@ -14,18 +14,18 @@
 
 ```bash
 # Explicit selection
-juju deploy nginx --constraints="deployment-type=stateless"
-juju deploy mysql --constraints="deployment-type=stateful"
-juju deploy node-exporter --constraints="deployment-type=daemon"
+juju deploy coredns --constraints="deployment-type=stateless"
+juju deploy mysql-k8s --constraints="deployment-type=stateful"
+juju deploy grafana-agent-k8s --constraints="deployment-type=daemon"
 
 # Combined with other constraints
-juju deploy nginx --constraints="deployment-type=stateless cores=2 mem=4G"
+juju deploy coredns --constraints="deployment-type=stateless cores=2 mem=4G"
 
 # Model-level default
 juju set-model-constraints deployment-type=stateless
 
 # Invalid value
-juju deploy nginx --constraints="deployment-type=invalid"
+juju deploy coredns --constraints="deployment-type=invalid"
 # Error: invalid deployment-type "invalid": valid values are stateless, stateful, daemon
 ```
 

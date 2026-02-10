@@ -54,13 +54,13 @@ juju bootstrap microk8s test-ctrl
 juju add-model test-model
 
 # Deploy with automatic inference (no storage → Deployment)
-juju deploy nginx
+juju deploy coredns
 
 # Deploy with explicit constraint
-juju deploy mysql --constraints="deployment-type=stateful"
+juju deploy mysql-k8s --constraints="deployment-type=stateful"
 
 # Deploy as DaemonSet
-juju deploy node-exporter --constraints="deployment-type=daemon"
+juju deploy grafana-agent-k8s --constraints="deployment-type=daemon"
 
 # Verify in status
 juju status
@@ -104,3 +104,18 @@ juju status
 - `apiserver/facades/controller/caasapplicationprovisioner/provisioner.go`
 - `api/facadeversions.go`
 - `api/controller/caasapplicationprovisioner/client.go`
+
+### Story 7 (Storage Attachment Cleanup)
+- `domain/application/state/unit.go` (extend ClearCAASUnitCloudContainer)
+- `domain/application/state/unit_test.go`
+
+### Story 8 (PVC Cleanup)
+- `internal/provider/kubernetes/application/application.go` (Delete() PVC cleanup)
+- `internal/provider/kubernetes/application/application_test.go`
+
+### Story 9+10 (Access Mode Validation)
+- `internal/worker/caasapplicationprovisioner/ops.go` (warning logic)
+- `internal/worker/caasapplicationprovisioner/ops_test.go`
+
+### Story 11 (Ephemeral Storage)
+- `internal/provider/kubernetes/application/application_test.go` (verification tests)
