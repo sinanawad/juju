@@ -421,7 +421,7 @@ func (s *OpsSuite) TestEnsureScaleAlive(c *tc.C) {
 		facade.EXPECT().DestroyUnits(gomock.Any(), unitsToDestroy).Return(nil),
 	)
 
-	err := caasapplicationprovisioner.AppOps.EnsureScale(c.Context(), "test", appId, app, life.Alive, true, facade, applicationService, s.logger)
+	err := caasapplicationprovisioner.AppOps.EnsureScale(c.Context(), "test", appId, app, life.Alive, "stateful", facade, applicationService, s.logger)
 	c.Assert(err, tc.ErrorIsNil)
 }
 
@@ -452,7 +452,7 @@ func (s *OpsSuite) TestEnsureScaleAliveRetry(c *tc.C) {
 		facade.EXPECT().DestroyUnits(gomock.Any(), unitsToDestroy).Return(nil),
 	)
 
-	err := caasapplicationprovisioner.AppOps.EnsureScale(c.Context(), "test", appId, app, life.Alive, true, facade, applicationService, s.logger)
+	err := caasapplicationprovisioner.AppOps.EnsureScale(c.Context(), "test", appId, app, life.Alive, "stateful", facade, applicationService, s.logger)
 	c.Assert(err, tc.ErrorMatches, `try again`)
 }
 
@@ -475,7 +475,7 @@ func (s *OpsSuite) TestEnsureScaleDyingDead(c *tc.C) {
 		applicationService.EXPECT().GetAllUnitLifeForApplication(gomock.Any(), appId).Return(units, nil),
 	)
 
-	err := caasapplicationprovisioner.AppOps.EnsureScale(c.Context(), "test", appId, app, life.Dead, true, facade, applicationService, s.logger)
+	err := caasapplicationprovisioner.AppOps.EnsureScale(c.Context(), "test", appId, app, life.Dead, "stateful", facade, applicationService, s.logger)
 	c.Assert(err, tc.ErrorIsNil)
 }
 
@@ -522,7 +522,7 @@ func (s *OpsSuite) TestEnsureScaleWithAttachStorage(c *tc.C) {
 		applicationService.EXPECT().SetApplicationScalingState(gomock.Any(), "test", 0, false).Return(nil),
 	)
 
-	err := caasapplicationprovisioner.AppOps.EnsureScale(c.Context(), "test", appUUID, app, life.Alive, true, facade, applicationService, s.logger)
+	err := caasapplicationprovisioner.AppOps.EnsureScale(c.Context(), "test", appUUID, app, life.Alive, "stateful", facade, applicationService, s.logger)
 	c.Assert(err, tc.ErrorIsNil)
 }
 
@@ -564,8 +564,148 @@ func (s *OpsSuite) TestEnsureScaleWithAttachStorageEnsurePVCsFails(c *tc.C) {
 			Return(errors.New("PVC creation failed")),
 	)
 
-	err := caasapplicationprovisioner.AppOps.EnsureScale(c.Context(), "test", appUUID, app, life.Alive, true, facade, applicationService, s.logger)
+	err := caasapplicationprovisioner.AppOps.EnsureScale(c.Context(), "test", appUUID, app, life.Alive, "stateful", facade, applicationService, s.logger)
 	c.Assert(err, tc.ErrorMatches, "PVC creation failed")
+}
+
+func (s *OpsSuite) TestEnsureScaleDownDeployment(c *tc.C) {
+	ctrl := gomock.NewController(c)
+	defer ctrl.Finish()
+
+	appUUID := tc.Must(c, application.NewUUID)
+	storageUniqueID := appUUID.String()[:6]
+	app := caasmocks.NewMockApplication(ctrl)
+	facade := mocks.NewMockCAASProvisionerFacade(ctrl)
+	applicationService := mocks.NewMockApplicationService(ctrl)
+
+	// Scale DOWN from 3 to 1 for a Deployment (orderedScale=false).
+	units := map[unit.Name]life.Value{
+		"test/0": life.Alive,
+		"test/1": life.Alive,
+		"test/2": life.Alive,
+	}
+
+	provisioningInfo := api.FilesystemProvisioningInfo{}
+
+	gomock.InOrder(
+		applicationService.EXPECT().GetApplicationScale(gomock.Any(), "test").Return(1, nil),
+		applicationService.EXPECT().GetApplicationScalingState(gomock.Any(), "test").Return(applicationservice.ScalingState{}, nil),
+		applicationService.EXPECT().SetApplicationScalingState(gomock.Any(), "test", 1, true).Return(nil),
+		applicationService.EXPECT().GetAllUnitLifeForApplication(gomock.Any(), appUUID).Return(units, nil),
+		facade.EXPECT().DestroyUnits(gomock.Any(), gomock.Any()).Return(nil),
+		// The fix: for Deployment, ensureScale must call
+		// ensureScaleWithFsAttachments to patch K8s replicas.
+		facade.EXPECT().FilesystemProvisioningInfo(gomock.Any(), "test").Return(provisioningInfo, nil),
+		app.EXPECT().EnsurePVCs(gomock.Any(), gomock.Any(), storageUniqueID).Return(nil),
+		app.EXPECT().Scale(1).Return(nil),
+	)
+
+	err := caasapplicationprovisioner.AppOps.EnsureScale(c.Context(), "test", appUUID, app, life.Alive, "stateless", facade, applicationService, s.logger)
+	c.Assert(err, tc.ErrorIsNil)
+}
+
+func (s *OpsSuite) TestEnsureScaleDownDeploymentRetry(c *tc.C) {
+	ctrl := gomock.NewController(c)
+	defer ctrl.Finish()
+
+	appUUID := tc.Must(c, application.NewUUID)
+	storageUniqueID := appUUID.String()[:6]
+	app := caasmocks.NewMockApplication(ctrl)
+	facade := mocks.NewMockCAASProvisionerFacade(ctrl)
+	applicationService := mocks.NewMockApplicationService(ctrl)
+
+	// Scale DOWN from 3 to 2, but desired scale is 1 (needs retry).
+	units := map[unit.Name]life.Value{
+		"test/0": life.Alive,
+		"test/1": life.Alive,
+		"test/2": life.Alive,
+	}
+
+	ps := applicationservice.ScalingState{
+		Scaling:     true,
+		ScaleTarget: 2,
+	}
+
+	provisioningInfo := api.FilesystemProvisioningInfo{}
+
+	gomock.InOrder(
+		applicationService.EXPECT().GetApplicationScale(gomock.Any(), "test").Return(1, nil),
+		applicationService.EXPECT().GetApplicationScalingState(gomock.Any(), "test").Return(ps, nil),
+		applicationService.EXPECT().GetAllUnitLifeForApplication(gomock.Any(), appUUID).Return(units, nil),
+		facade.EXPECT().DestroyUnits(gomock.Any(), gomock.Any()).Return(nil),
+		facade.EXPECT().FilesystemProvisioningInfo(gomock.Any(), "test").Return(provisioningInfo, nil),
+		app.EXPECT().EnsurePVCs(gomock.Any(), gomock.Any(), storageUniqueID).Return(nil),
+		app.EXPECT().Scale(2).Return(nil),
+	)
+
+	err := caasapplicationprovisioner.AppOps.EnsureScale(c.Context(), "test", appUUID, app, life.Alive, "stateless", facade, applicationService, s.logger)
+	c.Assert(err, tc.ErrorMatches, `try again`)
+}
+
+func (s *OpsSuite) TestEnsureScaleUpDeployment(c *tc.C) {
+	ctrl := gomock.NewController(c)
+	defer ctrl.Finish()
+
+	appUUID := tc.Must(c, application.NewUUID)
+	storageUniqueID := appUUID.String()[:6]
+	app := caasmocks.NewMockApplication(ctrl)
+	facade := mocks.NewMockCAASProvisionerFacade(ctrl)
+	applicationService := mocks.NewMockApplicationService(ctrl)
+
+	// Scale UP from 1 to 3 for a Deployment (orderedScale=false).
+	units := map[unit.Name]life.Value{
+		"test/0": life.Alive,
+	}
+
+	provisioningInfo := api.FilesystemProvisioningInfo{}
+
+	gomock.InOrder(
+		applicationService.EXPECT().GetApplicationScale(gomock.Any(), "test").Return(3, nil),
+		applicationService.EXPECT().GetApplicationScalingState(gomock.Any(), "test").Return(applicationservice.ScalingState{}, nil),
+		applicationService.EXPECT().SetApplicationScalingState(gomock.Any(), "test", 3, true).Return(nil),
+		applicationService.EXPECT().GetAllUnitLifeForApplication(gomock.Any(), appUUID).Return(units, nil),
+		facade.EXPECT().FilesystemProvisioningInfo(gomock.Any(), "test").Return(provisioningInfo, nil),
+		app.EXPECT().EnsurePVCs(gomock.Any(), gomock.Any(), storageUniqueID).Return(nil),
+		app.EXPECT().Scale(3).Return(nil),
+	)
+
+	// Scale up: scaleTarget(3) >= unitScale(1), so it enters the
+	// scale-up branch and returns tryAgain waiting for units.
+	err := caasapplicationprovisioner.AppOps.EnsureScale(c.Context(), "test", appUUID, app, life.Alive, "stateless", facade, applicationService, s.logger)
+	c.Assert(err, tc.ErrorMatches, `try again`)
+}
+
+func (s *OpsSuite) TestEnsureScaleDownDaemonSet(c *tc.C) {
+	ctrl := gomock.NewController(c)
+	defer ctrl.Finish()
+
+	appUUID := tc.Must(c, application.NewUUID)
+	app := caasmocks.NewMockApplication(ctrl)
+	facade := mocks.NewMockCAASProvisionerFacade(ctrl)
+	applicationService := mocks.NewMockApplicationService(ctrl)
+
+	// Scale DOWN from 3 to 1 for a DaemonSet (deploymentType="daemon").
+	// DaemonSets have no replica field — pod count is determined by
+	// node count. app.Scale() is not supported for daemon, so
+	// ensureScale must NOT call ensureScaleWithFsAttachments.
+	units := map[unit.Name]life.Value{
+		"test/0": life.Alive,
+		"test/1": life.Alive,
+		"test/2": life.Alive,
+	}
+
+	gomock.InOrder(
+		applicationService.EXPECT().GetApplicationScale(gomock.Any(), "test").Return(1, nil),
+		applicationService.EXPECT().GetApplicationScalingState(gomock.Any(), "test").Return(applicationservice.ScalingState{}, nil),
+		applicationService.EXPECT().SetApplicationScalingState(gomock.Any(), "test", 1, true).Return(nil),
+		applicationService.EXPECT().GetAllUnitLifeForApplication(gomock.Any(), appUUID).Return(units, nil),
+		facade.EXPECT().DestroyUnits(gomock.Any(), gomock.Any()).Return(nil),
+		// No FilesystemProvisioningInfo, EnsurePVCs, or Scale calls
+		// expected — DaemonSets skip the K8s replica patch.
+	)
+
+	err := caasapplicationprovisioner.AppOps.EnsureScale(c.Context(), "test", appUUID, app, life.Alive, "daemon", facade, applicationService, s.logger)
+	c.Assert(err, tc.ErrorIsNil)
 }
 
 func (s *OpsSuite) TestAppAlive(c *tc.C) {

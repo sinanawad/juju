@@ -375,8 +375,7 @@ func (a *appWorker) loop() error {
 				shouldRefresh = false
 				break
 			}
-			orderedScale := deploymentTypeStr == "stateful"
-			err := a.ops.EnsureScale(ctx, name, a.appUUID, app, a.life, orderedScale, a.facade,
+			err := a.ops.EnsureScale(ctx, name, a.appUUID, app, a.life, deploymentTypeStr, a.facade,
 				a.applicationService, a.logger)
 			if errors.Is(err, errors.NotFound) {
 				if scaleTries >= maxRetries {
