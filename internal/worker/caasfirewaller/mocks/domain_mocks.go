@@ -28,10 +28,11 @@ type MockApplicationService struct {
 
 // MockApplicationServiceMockRecorder is the mock recorder for MockApplicationService.
 type MockApplicationServiceMockRecorder struct {
-	mock                      *MockApplicationService
-	getApplicationLifeExpects []*gomock.Call2_2[context.Context, application.UUID, life.Value, error]
-	getApplicationNameExpects []*gomock.Call2_2[context.Context, application.UUID, string, error]
-	watchApplicationsExpects  []*gomock.Call1_2[context.Context, watcher.StringsWatcher, error]
+	mock                                *MockApplicationService
+	getApplicationDeploymentTypeExpects []*gomock.Call2_2[context.Context, string, string, error]
+	getApplicationLifeExpects           []*gomock.Call2_2[context.Context, application.UUID, life.Value, error]
+	getApplicationNameExpects           []*gomock.Call2_2[context.Context, application.UUID, string, error]
+	watchApplicationsExpects            []*gomock.Call1_2[context.Context, watcher.StringsWatcher, error]
 }
 
 // NewMockApplicationService creates a new mock instance.
@@ -47,43 +48,22 @@ func (m *MockApplicationService) EXPECT() *MockApplicationServiceMockRecorder {
 }
 
 // GetApplicationDeploymentType mocks base method.
-func (m *MockApplicationService) GetApplicationDeploymentType(arg0 context.Context, arg1 string) (string, error) {
+func (m *MockApplicationService) GetApplicationDeploymentType(ctx context.Context, appName string) (string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetApplicationDeploymentType", arg0, arg1)
-	ret0, _ := ret[0].(string)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
+	return gomock.Dispatch2_2(&m.recorder.getApplicationDeploymentTypeExpects, m.ctrl, m, "GetApplicationDeploymentType", ctx, appName)
 }
 
 // GetApplicationDeploymentType indicates an expected call of GetApplicationDeploymentType.
-func (mr *MockApplicationServiceMockRecorder) GetApplicationDeploymentType(arg0, arg1 any) *MockApplicationServiceGetApplicationDeploymentTypeCall {
+func (mr *MockApplicationServiceMockRecorder) GetApplicationDeploymentType(ctx, appName any) *MockApplicationServiceGetApplicationDeploymentTypeCall {
 	mr.mock.ctrl.T.Helper()
-	call := mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetApplicationDeploymentType", reflect.TypeOf((*MockApplicationService)(nil).GetApplicationDeploymentType), arg0, arg1)
-	return &MockApplicationServiceGetApplicationDeploymentTypeCall{Call: call}
+	call := gomock.NewCall2_2[context.Context, string, string, error](mr.mock.ctrl.T, mr.mock, "GetApplicationDeploymentType", gomock.EnsureMatcher(ctx), gomock.EnsureMatcher(appName))
+	mr.getApplicationDeploymentTypeExpects = append(mr.getApplicationDeploymentTypeExpects, call)
+	mr.mock.ctrl.Track(call.Call)
+	return call
 }
 
-// MockApplicationServiceGetApplicationDeploymentTypeCall wrap *gomock.Call
-type MockApplicationServiceGetApplicationDeploymentTypeCall struct {
-	*gomock.Call
-}
-
-// Return rewrite *gomock.Call.Return
-func (c *MockApplicationServiceGetApplicationDeploymentTypeCall) Return(arg0 string, arg1 error) *MockApplicationServiceGetApplicationDeploymentTypeCall {
-	c.Call = c.Call.Return(arg0, arg1)
-	return c
-}
-
-// Do rewrite *gomock.Call.Do
-func (c *MockApplicationServiceGetApplicationDeploymentTypeCall) Do(f func(context.Context, string) (string, error)) *MockApplicationServiceGetApplicationDeploymentTypeCall {
-	c.Call = c.Call.Do(f)
-	return c
-}
-
-// DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockApplicationServiceGetApplicationDeploymentTypeCall) DoAndReturn(f func(context.Context, string) (string, error)) *MockApplicationServiceGetApplicationDeploymentTypeCall {
-	c.Call = c.Call.DoAndReturn(f)
-	return c
-}
+// MockApplicationServiceGetApplicationDeploymentTypeCall is the typed call wrapper for GetApplicationDeploymentType.
+type MockApplicationServiceGetApplicationDeploymentTypeCall = gomock.Call2_2[context.Context, string, string, error]
 
 // GetApplicationLife mocks base method.
 func (m *MockApplicationService) GetApplicationLife(arg0 context.Context, arg1 application.UUID) (life.Value, error) {

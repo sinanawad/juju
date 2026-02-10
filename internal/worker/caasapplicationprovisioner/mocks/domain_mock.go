@@ -36,6 +36,7 @@ type MockApplicationService struct {
 type MockApplicationServiceMockRecorder struct {
 	mock                                             *MockApplicationService
 	clearApplicationHasK8sResourcesExpects           []*gomock.Call2_1[context.Context, application.UUID, error]
+	clearCAASUnitCloudContainerExpects               []*gomock.Call2_1[context.Context, unit.Name, error]
 	getAllUnitCloudContainerIDsForApplicationExpects []*gomock.Call2_2[context.Context, application.UUID, map[unit.Name]string, error]
 	getAllUnitLifeForApplicationExpects              []*gomock.Call2_2[context.Context, application.UUID, map[unit.Name]life.Value, error]
 	getApplicationDeploymentTypeExpects              []*gomock.Call2_2[context.Context, string, string, error]
@@ -86,6 +87,24 @@ func (mr *MockApplicationServiceMockRecorder) ClearApplicationHasK8sResources(ct
 
 // MockApplicationServiceClearApplicationHasK8sResourcesCall is the typed call wrapper for ClearApplicationHasK8sResources.
 type MockApplicationServiceClearApplicationHasK8sResourcesCall = gomock.Call2_1[context.Context, application.UUID, error]
+
+// ClearCAASUnitCloudContainer mocks base method.
+func (m *MockApplicationService) ClearCAASUnitCloudContainer(ctx context.Context, unitName unit.Name) error {
+	m.ctrl.T.Helper()
+	return gomock.Dispatch2_1(&m.recorder.clearCAASUnitCloudContainerExpects, m.ctrl, m, "ClearCAASUnitCloudContainer", ctx, unitName)
+}
+
+// ClearCAASUnitCloudContainer indicates an expected call of ClearCAASUnitCloudContainer.
+func (mr *MockApplicationServiceMockRecorder) ClearCAASUnitCloudContainer(ctx, unitName any) *MockApplicationServiceClearCAASUnitCloudContainerCall {
+	mr.mock.ctrl.T.Helper()
+	call := gomock.NewCall2_1[context.Context, unit.Name, error](mr.mock.ctrl.T, mr.mock, "ClearCAASUnitCloudContainer", gomock.EnsureMatcher(ctx), gomock.EnsureMatcher(unitName))
+	mr.clearCAASUnitCloudContainerExpects = append(mr.clearCAASUnitCloudContainerExpects, call)
+	mr.mock.ctrl.Track(call.Call)
+	return call
+}
+
+// MockApplicationServiceClearCAASUnitCloudContainerCall is the typed call wrapper for ClearCAASUnitCloudContainer.
+type MockApplicationServiceClearCAASUnitCloudContainerCall = gomock.Call2_1[context.Context, unit.Name, error]
 
 // GetAllUnitCloudContainerIDsForApplication mocks base method.
 func (m *MockApplicationService) GetAllUnitCloudContainerIDsForApplication(ctx context.Context, id application.UUID) (map[unit.Name]string, error) {

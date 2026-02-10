@@ -99,6 +99,25 @@ As an operator managing multiple applications across a Kubernetes model, I want 
 
 ---
 
+### User Story 6 - Pod Recovery and Resilience (Priority: P1)
+
+As an operator running a Deployment or DaemonSet application on Kubernetes, I want pods that are deleted (due to node failure, eviction, manual deletion, or rolling updates) to be automatically replaced by Kubernetes and seamlessly re-registered in Juju, so that my application self-heals without manual intervention.
+
+**Why this priority**: Without this fix, Deployment and DaemonSet pods that are replaced by Kubernetes (a normal operational event) fail to re-register, leaving units permanently stuck. This is a critical gap for any non-StatefulSet workload.
+
+**Independent Test**: Can be tested by deploying a Deployment application, deleting a pod, and verifying the replacement pod re-registers the existing unit.
+
+**Acceptance Scenarios**:
+
+1. **Given** a running Deployment app, **When** a pod is deleted, **Then** K8s creates a replacement pod and Juju reassigns the existing unit to it within one worker cycle (~10s).
+2. **Given** a running DaemonSet app, **When** a node is drained/removed, **Then** pods on the removed node have their stale k8s_pod entries cleared and replacement pods on other nodes register correctly.
+3. **Given** a running StatefulSet app, **When** a pod is deleted, **Then** K8s recreates it with the same name and existing registration succeeds (no regression).
+4. **Given** a multi-replica Deployment, **When** multiple pods are replaced simultaneously, **Then** each replacement pod is correctly matched to a distinct existing unit.
+
+**Edge case**: If the worker hasn't run yet when the new pod registers, registration fails with a retryable error. The agent retries, and after the worker clears the stale entry (next cycle), registration succeeds.
+
+---
+
 ### Edge Cases
 
 - What happens when a charm declares persistent storage but the operator deploys with `deployment-type=stateless`? The system should allow this (the operator may intend to use ephemeral storage or shared volumes) but issue a warning that persistent storage may not behave as expected with a stateless workload type.

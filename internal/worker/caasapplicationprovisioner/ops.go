@@ -198,7 +198,7 @@ func (applicationOps) UpdateState(
 	broker CAASBroker, applicationService ApplicationService, statusService StatusService,
 	clk clock.Clock, logger logger.Logger,
 ) (UpdateStatusState, error) {
-	return updateState(ctx, appName, appUUID, app, lastReportedStatus, broker, applicationService, statusService, clk)
+	return updateState(ctx, appName, appUUID, app, lastReportedStatus, broker, applicationService, statusService, clk, logger)
 }
 
 func (applicationOps) RefreshOperatorStatus(
@@ -482,7 +482,7 @@ func updateState(
 	appName string, appUUID coreapplication.UUID, app caas.Application,
 	lastReportedStatus UpdateStatusState,
 	broker CAASBroker, applicationService ApplicationService, statusService StatusService,
-	clk clock.Clock,
+	clk clock.Clock, logger logger.Logger,
 ) (UpdateStatusState, error) {
 	svc, err := app.Service()
 	if err != nil && !errors.Is(err, errors.NotFound) {
@@ -518,6 +518,26 @@ func updateState(
 	units, err := app.Units()
 	if err != nil {
 		return nil, errors.Trace(err)
+	}
+
+	// Detect and clear stale k8s_pod entries for non-ordered workloads.
+	// When a Deployment/DaemonSet pod is replaced, K8s gives the new pod a
+	// different name. The old unit's k8s_pod row blocks registration of the
+	// new pod (step 2 of RegisterCAASUnit requires kp.unit_uuid IS NULL).
+	// Clear stale rows so the new pod can claim the existing unit.
+	activePods := make(map[string]struct{}, len(units))
+	for _, u := range units {
+		activePods[u.Id] = struct{}{}
+	}
+	for uName, podName := range unitToPod {
+		if _, active := activePods[podName]; !active {
+			logger.Infof(ctx, "clearing stale cloud container for unit %s (pod %s no longer active)", uName, podName)
+			if err := applicationService.ClearCAASUnitCloudContainer(ctx, uName); err != nil && !errors.Is(err, applicationerrors.UnitNotFound) {
+				return nil, errors.Trace(err)
+			}
+			// Remove from podToUnit so the stale entry isn't used below.
+			delete(podToUnit, podName)
+		}
 	}
 
 	reportedStatus := make(UpdateStatusState, len(units))

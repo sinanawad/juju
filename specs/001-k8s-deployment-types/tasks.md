@@ -299,6 +299,31 @@ Phase 5 (US5: T023-T029)  ─┘── parallel (different layers, no dependenci
 
 ---
 
+## Phase 7: Pod Recovery and Resilience (User Story 6)
+
+**Purpose**: Fix Deployment/DaemonSet pod replacement — when K8s replaces a pod with a new random name, the stale k8s_pod entry blocks re-registration. The worker-side reconciliation detects and clears stale entries.
+
+### State Layer: Clear Stale Cloud Container
+
+- [x] T050 [US6] Add `ClearCAASUnitCloudContainer(ctx, unitName)` to `domain/application/state/unit.go` — deletes k8s_pod_port and k8s_pod rows for the given unit name. Add tests in `domain/application/state/unit_test.go`.
+
+### Service Layer: Expose Clear Method
+
+- [x] T051 [US6] Add `ClearCAASUnitCloudContainer` to `UnitState` interface in `domain/application/service/unit.go` and add delegating `Service` method with validation. Add mock-based tests in `domain/application/service/unit_test.go`.
+
+### Worker Layer: Stale Pod Reconciliation
+
+- [x] T052 [US6] Add `ClearCAASUnitCloudContainer` to `ApplicationService` interface in `internal/worker/caasapplicationprovisioner/worker.go`.
+- [x] T053 [US6] Add stale pod detection in `updateState()` in `internal/worker/caasapplicationprovisioner/ops.go` — after building `unitToPod` and querying K8s pods, identify units whose provider_id doesn't match any active pod and call `ClearCAASUnitCloudContainer` for each. Add tests in `ops_test.go`.
+
+### Mock Regeneration
+
+- [x] T054 [US6] Regenerate mocks: `go generate ./domain/application/service/...` and `go generate ./internal/worker/caasapplicationprovisioner/...`
+
+**Checkpoint**: Deployment/DaemonSet pod replacement self-heals — the worker clears stale k8s_pod entries and the agent's retry succeeds via step 2 (GetUnassignedCAASUnitName).
+
+---
+
 ## Notes
 
 - FR-009 (silently ignore deployment-type on IAAS) requires no new code — the existing constraint

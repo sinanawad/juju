@@ -240,26 +240,26 @@ LIMIT 1
 	return coreunit.Name(result.Name), true, nil
 }
 
-// GetNextCAASUnitOrdinal returns the next available unit ordinal for the given
-// application by finding the maximum existing ordinal and adding 1. If no units
-// exist, 0 is returned.
+// GetNextCAASUnitOrdinal returns the next free unit ordinal for the given
+// application: one greater than the maximum ordinal over all existing unit
+// rows. Dying and dead units are counted too — their rows still occupy the
+// unit name until they are reaped. If no units exist, 0 is returned.
 func (st *State) GetNextCAASUnitOrdinal(
 	ctx context.Context,
-	appName string,
+	appUUID coreapplication.UUID,
 ) (int, error) {
 	db, err := st.DB(ctx)
 	if err != nil {
 		return 0, errors.Capture(err)
 	}
 
-	input := entityName{Name: appName}
+	input := entityUUID{UUID: appUUID.String()}
 	var names []unitName
 
 	q := `
 SELECT u.name AS &unitName.name
-FROM unit u
-JOIN application a ON u.application_uuid = a.uuid
-WHERE a.name = $entityName.name
+FROM   unit u
+WHERE  u.application_uuid = $entityUUID.uuid
 `
 	stmt, err := st.Prepare(q, input, unitName{})
 	if err != nil {
@@ -269,18 +269,14 @@ WHERE a.name = $entityName.name
 	err = db.Txn(ctx, func(ctx context.Context, tx *sqlair.TX) error {
 		return tx.Query(ctx, stmt, input).GetAll(&names)
 	})
-	if errors.Is(err, sqlair.ErrNoRows) || len(names) == 0 {
-		return 0, nil
-	}
-	if err != nil {
+	if err != nil && !errors.Is(err, sqlair.ErrNoRows) {
 		return 0, errors.Capture(err)
 	}
 
 	// Unit names are "<appName>/<ordinal>". Find the maximum ordinal.
-	prefix := appName + "/"
 	maxOrd := -1
 	for _, n := range names {
-		ordStr := strings.TrimPrefix(n.Name, prefix)
+		ordStr := n.Name[strings.LastIndex(n.Name, "/")+1:]
 		ord, err := strconv.Atoi(ordStr)
 		if err != nil {
 			continue
@@ -2935,6 +2931,58 @@ func encodeResolveMode(mode sql.NullInt16) (string, error) {
 	default:
 		return "", errors.Errorf("unknown resolve mode %d", mode.Int16).Add(coreerrors.NotSupported)
 	}
+}
+
+// ClearCAASUnitCloudContainer removes the k8s_pod row (and its
+// k8s_pod_port children) for a unit identified by name. This is used to
+// clear stale cloud container entries when a Deployment/DaemonSet pod is
+// replaced by Kubernetes with a new randomly-named pod.
+//
+// The following errors may be returned:
+//   - [applicationerrors.UnitNotFound] if the unit does not exist.
+func (st *State) ClearCAASUnitCloudContainer(
+	ctx context.Context,
+	uName coreunit.Name,
+) error {
+	db, err := st.DB(ctx)
+	if err != nil {
+		return errors.Capture(err)
+	}
+
+	nameInput := unitName{Name: uName.String()}
+
+	deletePortsStmt, err := st.Prepare(`
+DELETE FROM k8s_pod_port
+WHERE  unit_uuid = (SELECT uuid FROM unit WHERE name = $unitName.name)
+`, nameInput)
+	if err != nil {
+		return errors.Capture(err)
+	}
+
+	deletePodStmt, err := st.Prepare(`
+DELETE FROM k8s_pod
+WHERE  unit_uuid = (SELECT uuid FROM unit WHERE name = $unitName.name)
+`, nameInput)
+	if err != nil {
+		return errors.Capture(err)
+	}
+
+	err = db.Txn(ctx, func(ctx context.Context, tx *sqlair.TX) error {
+		if err := st.checkUnitExistsByName(ctx, tx, uName.String()); err != nil {
+			return errors.Capture(err)
+		}
+		if err := tx.Query(ctx, deletePortsStmt, nameInput).Run(); err != nil {
+			return errors.Errorf("deleting k8s pod ports for unit %q: %w", uName, err)
+		}
+		if err := tx.Query(ctx, deletePodStmt, nameInput).Run(); err != nil {
+			return errors.Errorf("deleting k8s pod for unit %q: %w", uName, err)
+		}
+		return nil
+	})
+	if err != nil {
+		return errors.Errorf("clearing cloud container for unit %q: %w", uName, err)
+	}
+	return nil
 }
 
 func encodeK8sPodInfo(info unitK8sPodInfo, ports []k8sPodPort) application.K8sPodInfo {

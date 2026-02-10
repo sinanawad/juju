@@ -64,10 +64,11 @@ type UnitState interface {
 	// to it. If no unassigned unit exists, an empty name and false are returned.
 	GetUnassignedCAASUnitName(context.Context, coreapplication.UUID) (coreunit.Name, bool, error)
 
-	// GetNextCAASUnitOrdinal returns the next available unit ordinal for the
-	// given application by finding the maximum existing ordinal and adding 1.
+	// GetNextCAASUnitOrdinal returns the next free unit ordinal for the given
+	// application: one greater than the maximum ordinal over all existing unit
+	// rows, counting dying and dead units whose rows still occupy their names.
 	// If no units exist, 0 is returned.
-	GetNextCAASUnitOrdinal(context.Context, string) (int, error)
+	GetNextCAASUnitOrdinal(context.Context, coreapplication.UUID) (int, error)
 
 	// InsertMigratingIAASUnits inserts the fully formed units for the specified
 	// IAAS application. This is only used when inserting units during model
@@ -248,6 +249,14 @@ type UnitState interface {
 	//   - If the application is not found, [applicationerrors.ApplicationNotFound]
 	//     is returned.
 	GetAllUnitCloudContainerIDsForApplication(context.Context, coreapplication.UUID) (map[coreunit.Name]string, error)
+
+	// ClearCAASUnitCloudContainer removes the k8s_pod row (and its
+	// k8s_pod_port children) for a unit identified by name. This is used
+	// to clear stale cloud container entries when a Deployment/DaemonSet
+	// pod is replaced by Kubernetes with a new randomly-named pod.
+	// The following errors may be returned:
+	//   - [applicationerrors.UnitNotFound] if the unit does not exist.
+	ClearCAASUnitCloudContainer(context.Context, coreunit.Name) error
 
 	// GetStorageAddInfoByUnitUUID returns the deploy metadata and how many
 	// storage instances exist for the named storage on the specified unit.
@@ -1496,6 +1505,24 @@ func (s *Service) GetAllUnitCloudContainerIDsForApplication(ctx context.Context,
 		return nil, errors.Capture(err)
 	}
 	return idMap, nil
+}
+
+// ClearCAASUnitCloudContainer removes the k8s_pod row (and its
+// k8s_pod_port children) for a unit identified by name. This is used to
+// clear stale cloud container entries when a Deployment/DaemonSet pod is
+// replaced by Kubernetes with a new randomly-named pod.
+//
+// The following errors may be returned:
+//   - [applicationerrors.UnitNotFound] if the unit does not exist.
+func (s *Service) ClearCAASUnitCloudContainer(ctx context.Context, unitName coreunit.Name) error {
+	ctx, span := trace.Start(ctx, trace.NameFromFunc())
+	defer span.End()
+
+	if err := unitName.Validate(); err != nil {
+		return errors.Capture(err)
+	}
+
+	return s.st.ClearCAASUnitCloudContainer(ctx, unitName)
 }
 
 // IAASUnitContext describes the IAAS context information required for the
