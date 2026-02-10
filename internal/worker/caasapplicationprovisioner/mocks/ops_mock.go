@@ -160,7 +160,7 @@ func (c *MockApplicationOpsAppDyingCall) DoAndReturn(f func(context.Context, str
 }
 
 // EnsureScale mocks base method.
-func (m *MockApplicationOps) EnsureScale(arg0 context.Context, arg1 string, arg2 application.UUID, arg3 caas.Application, arg4 life.Value, arg5 bool, arg6 caasapplicationprovisioner.CAASProvisionerFacade, arg7 caasapplicationprovisioner.ApplicationService, arg8 caasapplicationprovisioner.StatusService, arg9 logger.Logger) error {
+func (m *MockApplicationOps) EnsureScale(arg0 context.Context, arg1 string, arg2 application.UUID, arg3 caas.Application, arg4 life.Value, arg5 string, arg6 caasapplicationprovisioner.CAASProvisionerFacade, arg7 caasapplicationprovisioner.ApplicationService, arg8 caasapplicationprovisioner.StatusService, arg9 logger.Logger) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "EnsureScale", arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9)
 	ret0, _ := ret[0].(error)
@@ -186,13 +186,13 @@ func (c *MockApplicationOpsEnsureScaleCall) Return(arg0 error) *MockApplicationO
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockApplicationOpsEnsureScaleCall) Do(f func(context.Context, string, application.UUID, caas.Application, life.Value, bool, caasapplicationprovisioner.CAASProvisionerFacade, caasapplicationprovisioner.ApplicationService, caasapplicationprovisioner.StatusService, logger.Logger) error) *MockApplicationOpsEnsureScaleCall {
+func (c *MockApplicationOpsEnsureScaleCall) Do(f func(context.Context, string, application.UUID, caas.Application, life.Value, string, caasapplicationprovisioner.CAASProvisionerFacade, caasapplicationprovisioner.ApplicationService, caasapplicationprovisioner.StatusService, logger.Logger) error) *MockApplicationOpsEnsureScaleCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockApplicationOpsEnsureScaleCall) DoAndReturn(f func(context.Context, string, application.UUID, caas.Application, life.Value, bool, caasapplicationprovisioner.CAASProvisionerFacade, caasapplicationprovisioner.ApplicationService, caasapplicationprovisioner.StatusService, logger.Logger) error) *MockApplicationOpsEnsureScaleCall {
+func (c *MockApplicationOpsEnsureScaleCall) DoAndReturn(f func(context.Context, string, application.UUID, caas.Application, life.Value, string, caasapplicationprovisioner.CAASProvisionerFacade, caasapplicationprovisioner.ApplicationService, caasapplicationprovisioner.StatusService, logger.Logger) error) *MockApplicationOpsEnsureScaleCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

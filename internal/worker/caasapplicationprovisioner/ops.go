@@ -136,7 +136,7 @@ type ApplicationOps interface {
 		logger logger.Logger) error
 
 	EnsureScale(ctx context.Context, appName string, appUUID coreapplication.UUID,
-		app caas.Application, appLife life.Value, orderedScale bool, facade CAASProvisionerFacade,
+		app caas.Application, appLife life.Value, deploymentType string, facade CAASProvisionerFacade,
 		applicationService ApplicationService, statusService StatusService,
 		logger logger.Logger) error
 }
@@ -233,12 +233,12 @@ func (applicationOps) ReconcileDeadUnitScale(
 func (applicationOps) EnsureScale(
 	ctx context.Context,
 	appName string, appUUID coreapplication.UUID, app caas.Application, appLife life.Value,
-	orderedScale bool,
+	deploymentType string,
 	facade CAASProvisionerFacade,
 	applicationService ApplicationService, statusService StatusService,
 	logger logger.Logger,
 ) error {
-	return ensureScale(ctx, appName, appUUID, app, appLife, orderedScale, facade, applicationService, statusService, logger)
+	return ensureScale(ctx, appName, appUUID, app, appLife, deploymentType, facade, applicationService, statusService, logger)
 }
 
 type Tomb interface {
@@ -410,9 +410,9 @@ func appDying(
 	logger logger.Logger,
 ) (err error) {
 	logger.Debugf(ctx, "application %q dying", appName)
-	// orderedScale=true is fine here: when scaling to 0, all units are
-	// destroyed regardless of the deployment type.
-	err = ensureScale(ctx, appName, appUUID, app, appLife, true, facade, applicationService, statusService, logger)
+	// "stateful" (ordered scale) is fine here: when scaling to 0, all
+	// units are destroyed regardless of the deployment type.
+	err = ensureScale(ctx, appName, appUUID, app, appLife, "stateful", facade, applicationService, statusService, logger)
 	if err != nil {
 		return errors.Annotate(err, "cannot scale dying application to 0")
 	}
@@ -744,11 +744,12 @@ func reconcileDeadUnitScale(
 func ensureScale(
 	ctx context.Context,
 	appName string, appUUID coreapplication.UUID, app caas.Application, appLife life.Value,
-	orderedScale bool,
+	deploymentType string,
 	facade CAASProvisionerFacade,
 	applicationService ApplicationService, statusService StatusService,
 	logger logger.Logger,
 ) error {
+	orderedScale := deploymentType == "stateful"
 	var err error
 	var desiredScale int
 	switch appLife {
@@ -875,6 +876,25 @@ func ensureScale(
 	if len(unitsToDestroy) > 0 {
 		if err := facade.DestroyUnits(ctx, unitsToDestroy); err != nil {
 			return errors.Trace(err)
+		}
+	}
+
+	// For Deployments, patch the K8s replica count immediately.
+	// Unlike StatefulSet (where reconcileDeadUnitScale waits for orderly
+	// pod shutdown), Deployments have no ordered shutdown requirement,
+	// so we can safely tell K8s to scale down now. Without this, a
+	// deadlock occurs: reconcileDeadUnitScale waits for units to die,
+	// but K8s never kills the pods because spec.replicas was never
+	// reduced.
+	// DaemonSets are excluded: their pod count is determined by node
+	// count, not a replica field, and Scale() is not supported for them.
+	if deploymentType == "stateless" {
+		storageUniqueID := appUUID.String()[:6]
+		if err := ensureScaleWithFsAttachments(
+			ctx, appName, app, ps.ScaleTarget,
+			facade, logger, storageUniqueID,
+		); err != nil {
+			return err
 		}
 	}
 
