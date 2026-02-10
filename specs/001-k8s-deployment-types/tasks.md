@@ -206,11 +206,13 @@ Phase 1 (Setup)
                         ├──> Phase 4 (US3: DaemonSet scale blocking)
                         ├──> Phase 5 (US5: Status visibility)
                         └──> Phase 6 (Migration) ⚠️ T040-T043 = RELEASE BLOCKER
-                                    └──> Phase 7 (Polish)
+                                    └──> Phase 7 (Pod Recovery)
+                                                └──> Phase 8 (Resilience Testing)
 ```
 
 - **Story 3 and Story 5 are independent of each other** — they can run in parallel after Phase 3
 - **Story 1+2+4 is the MVP** — once complete, the core feature works end-to-end
+- **Phase 8 depends on Phase 7** — resilience testing validates pod recovery + all prior phases
 
 ### Within Each Phase
 
@@ -321,6 +323,37 @@ Phase 5 (US5: T023-T029)  ─┘── parallel (different layers, no dependenci
 - [x] T054 [US6] Regenerate mocks: `go generate ./domain/application/service/...` and `go generate ./internal/worker/caasapplicationprovisioner/...`
 
 **Checkpoint**: Deployment/DaemonSet pod replacement self-heals — the worker clears stale k8s_pod entries and the agent's retry succeeds via step 2 (GetUnassignedCAASUnitName).
+
+---
+
+## Phase 8: Resilience Testing (User Story 6 + Regression Guard)
+
+**Purpose**: Systematic end-to-end verification of the MVP under stress, chaos, and lifecycle churn. Every scenario is executed for both Deployment and StatefulSet to guard against regressions.
+
+**Test plan**: See [`resilience-testing.md`](resilience-testing.md) for the full scenario matrix.
+
+### Juju Lifecycle Scenarios
+
+- [ ] T060 [US1+4+6] S1.1-S1.6: Deploy, scale up (1->3), scale down (3->1), scale up (1->2), remove, redeploy — verify ordinal reset, correct unit count, clean lifecycle. Run for both Deployment and StatefulSet.
+
+### Substrate Chaos Scenarios
+
+- [ ] T061 [US6] S2.1-S2.3: Single pod deletion at scale=1, single pod deletion at scale=3, all pods deleted at scale=3 — verify unit recovery, no phantom units. Run for both Deployment and StatefulSet.
+- [ ] T062 [US6] S2.4-S2.6: Rapid pod cycling, pod deletion during scale-up, pod deletion during scale-down — verify convergence to correct state. Run for both Deployment and StatefulSet.
+
+### Removal and Redeployment Scenarios
+
+- [ ] T063 [US6] S3.1-S3.3: Remove and redeploy (clean cycle), remove scaled app and redeploy, redeploy as different type — verify ordinal reset, correct K8s resource type. Run for both Deployment and StatefulSet.
+
+### Worker Restart Scenarios
+
+- [ ] T064 [US6] S4.1-S4.2: Controller jujud restart during normal operation, controller restart combined with pod deletion — verify no state loss, unit recovery. Run for both Deployment and StatefulSet.
+
+### Edge Case Scenarios
+
+- [ ] T065 [US6] S5.1-S5.3: Scale to 0 and back, rapid scale oscillation, kill pod during startup — verify convergence, no orphaned units. Run for both Deployment and StatefulSet.
+
+**Checkpoint**: All 20 scenarios in the execution matrix pass for both Deployment and StatefulSet.
 
 ---
 
