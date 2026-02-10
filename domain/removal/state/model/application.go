@@ -10,11 +10,13 @@ import (
 	"github.com/canonical/sqlair"
 	"github.com/juju/collections/transform"
 
+	"github.com/juju/juju/domain/application"
 	applicationerrors "github.com/juju/juju/domain/application/errors"
 	"github.com/juju/juju/domain/life"
 	"github.com/juju/juju/domain/removal"
 	removalerrors "github.com/juju/juju/domain/removal/errors"
 	"github.com/juju/juju/domain/removal/internal"
+	domainsequence "github.com/juju/juju/domain/sequence"
 	"github.com/juju/juju/internal/errors"
 )
 
@@ -397,6 +399,10 @@ WHERE  uuid = $entityUUID.uuid;`, applicationUUID)
 			}
 		}
 
+		if err := st.deleteApplicationUnitSequence(ctx, tx, aUUID); err != nil {
+			return errors.Errorf("deleting application unit sequence: %w", err)
+		}
+
 		// Delete the application itself.
 		if err := tx.Query(ctx, deleteApplicationStmt, applicationUUID).Run(); err != nil {
 			return errors.Errorf("deleting application: %w", err)
@@ -466,6 +472,50 @@ func (st *State) deleteSimpleApplicationReferences(ctx context.Context, tx *sqla
 		if err := tx.Query(ctx, deleteApplicationReferenceStmt, app).Run(); err != nil {
 			return errors.Errorf("deleting reference to application in %s: %w", table, err)
 		}
+	}
+	return nil
+}
+
+// deleteApplicationUnitSequence removes the unit ordinal sequence entry
+// associated with the application being deleted. This prevents stale sequences
+// from inflating unit ordinals when a new application with the same name is
+// later deployed.
+func (st *State) deleteApplicationUnitSequence(ctx context.Context, tx *sqlair.TX, aUUID string) error {
+	// Look up the application name so we can derive the sequence namespace.
+	app := entityUUID{UUID: aUUID}
+	var appName entityName
+
+	getNameStmt, err := st.Prepare(`
+SELECT a.name AS &entityName.name
+FROM   application a
+WHERE  a.uuid = $entityUUID.uuid
+`, app, appName)
+	if err != nil {
+		return errors.Capture(err)
+	}
+
+	if err := tx.Query(ctx, getNameStmt, app).Get(&appName); err != nil {
+		if errors.Is(err, sqlair.ErrNoRows) {
+			return nil
+		}
+		return errors.Errorf("getting application name: %w", err)
+	}
+
+	namespace := domainsequence.MakePrefixNamespace(
+		application.ApplicationSequenceNamespace, appName.Name,
+	)
+	nsInput := sequenceNamespace{Namespace: namespace.String()}
+
+	deleteSeqStmt, err := st.Prepare(`
+DELETE FROM sequence
+WHERE  namespace = $sequenceNamespace.namespace
+`, nsInput)
+	if err != nil {
+		return errors.Capture(err)
+	}
+
+	if err := tx.Query(ctx, deleteSeqStmt, nsInput).Run(); err != nil {
+		return errors.Errorf("deleting unit sequence for application %q: %w", appName.Name, err)
 	}
 	return nil
 }

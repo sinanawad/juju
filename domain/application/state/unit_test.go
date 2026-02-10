@@ -1725,6 +1725,182 @@ func (s *unitStateSubordinateSuite) createSubordinateApplication(c *tc.C, name s
 	return appID
 }
 
+func (s *unitStateSuite) TestGetNextCAASUnitOrdinalSkipsDeadUnits(c *tc.C) {
+	_ = s.createCAASScalingApplication(c, "bar", life.Alive, 2)
+
+	// Allow scaling and register two units.
+	err := s.state.SetApplicationScalingState(c.Context(), "bar", 2, true)
+	c.Assert(err, tc.ErrorIsNil)
+
+	for i, name := range []coreunit.Name{"bar/0", "bar/1"} {
+		p := application.RegisterCAASUnitArg{
+			UnitName:     name,
+			PasswordHash: fmt.Sprintf("passwordhash%d", i),
+			ProviderID:   fmt.Sprintf("pod-%d", i),
+			Address:      ptr(fmt.Sprintf("10.0.0.%d/8", i)),
+			Ports:        ptr([]string{"8080"}),
+			OrderedScale: true,
+			OrderedId:    i,
+		}
+		err = s.state.RegisterCAASUnit(c.Context(), "bar", p)
+		c.Assert(err, tc.ErrorIsNil)
+	}
+
+	// Next ordinal should be 2 (after bar/0 and bar/1).
+	ord, err := s.state.GetNextCAASUnitOrdinal(c.Context(), "bar")
+	c.Assert(err, tc.ErrorIsNil)
+	c.Assert(ord, tc.Equals, 2)
+
+	// Mark both units as dead.
+	for _, name := range []coreunit.Name{"bar/0", "bar/1"} {
+		var unitUUID string
+		err = s.TxnRunner().StdTxn(c.Context(), func(ctx context.Context, tx *sql.Tx) error {
+			return tx.QueryRowContext(ctx, "SELECT uuid FROM unit WHERE name=?", string(name)).Scan(&unitUUID)
+		})
+		c.Assert(err, tc.ErrorIsNil)
+		s.setUnitLife(c, coreunit.UUID(unitUUID), life.Dead)
+	}
+
+	// Dead units should not count - ordinal resets to 0.
+	ord, err = s.state.GetNextCAASUnitOrdinal(c.Context(), "bar")
+	c.Assert(err, tc.ErrorIsNil)
+	c.Assert(ord, tc.Equals, 0)
+}
+
+func (s *unitStateSuite) TestGetNextCAASUnitOrdinalIncludesDyingUnits(c *tc.C) {
+	_ = s.createCAASScalingApplication(c, "baz", life.Alive, 2)
+
+	// Allow scaling and register two units.
+	err := s.state.SetApplicationScalingState(c.Context(), "baz", 2, true)
+	c.Assert(err, tc.ErrorIsNil)
+
+	for i, name := range []coreunit.Name{"baz/0", "baz/1"} {
+		p := application.RegisterCAASUnitArg{
+			UnitName:     name,
+			PasswordHash: fmt.Sprintf("bazhash%d", i),
+			ProviderID:   fmt.Sprintf("baz-pod-%d", i),
+			Address:      ptr(fmt.Sprintf("10.1.0.%d/8", i)),
+			Ports:        ptr([]string{"9090"}),
+			OrderedScale: true,
+			OrderedId:    i,
+		}
+		err = s.state.RegisterCAASUnit(c.Context(), "baz", p)
+		c.Assert(err, tc.ErrorIsNil)
+	}
+
+	// Mark baz/1 as dying (still being torn down).
+	var unitUUID string
+	err = s.TxnRunner().StdTxn(c.Context(), func(ctx context.Context, tx *sql.Tx) error {
+		return tx.QueryRowContext(ctx, "SELECT uuid FROM unit WHERE name=?", "baz/1").Scan(&unitUUID)
+	})
+	c.Assert(err, tc.ErrorIsNil)
+	s.setUnitLife(c, coreunit.UUID(unitUUID), life.Dying)
+
+	// Dying units must still reserve their ordinal to avoid name collisions.
+	// baz/1 is dying, so next ordinal should be 2 (not 1).
+	ord, err := s.state.GetNextCAASUnitOrdinal(c.Context(), "baz")
+	c.Assert(err, tc.ErrorIsNil)
+	c.Assert(ord, tc.Equals, 2)
+}
+
+func (s *unitStateSuite) TestClearCAASUnitCloudContainer(c *tc.C) {
+	s.createCAASScalingApplication(c, "bar", life.Alive, 1)
+
+	// Allow scaling and register a unit with a cloud container.
+	err := s.state.SetApplicationScalingState(c.Context(), "bar", 1, true)
+	c.Assert(err, tc.ErrorIsNil)
+
+	p := application.RegisterCAASUnitArg{
+		UnitName:     "bar/0",
+		PasswordHash: "passwordhash",
+		ProviderID:   "old-pod-abc123",
+		Address:      ptr("10.6.6.6/8"),
+		Ports:        ptr([]string{"8080"}),
+		OrderedScale: true,
+		OrderedId:    0,
+	}
+	err = s.state.RegisterCAASUnit(c.Context(), "bar", p)
+	c.Assert(err, tc.ErrorIsNil)
+
+	// Verify the k8s_pod row exists.
+	var podCount int
+	err = s.TxnRunner().StdTxn(c.Context(), func(ctx context.Context, tx *sql.Tx) error {
+		return tx.QueryRowContext(ctx, `
+SELECT COUNT(*) FROM k8s_pod kp
+JOIN unit u ON kp.unit_uuid = u.uuid
+WHERE u.name = ?
+`, "bar/0").Scan(&podCount)
+	})
+	c.Assert(err, tc.ErrorIsNil)
+	c.Assert(podCount, tc.Equals, 1)
+
+	// Clear the cloud container.
+	err = s.state.ClearCAASUnitCloudContainer(c.Context(), "bar/0")
+	c.Assert(err, tc.ErrorIsNil)
+
+	// Verify the k8s_pod row is gone.
+	err = s.TxnRunner().StdTxn(c.Context(), func(ctx context.Context, tx *sql.Tx) error {
+		return tx.QueryRowContext(ctx, `
+SELECT COUNT(*) FROM k8s_pod kp
+JOIN unit u ON kp.unit_uuid = u.uuid
+WHERE u.name = ?
+`, "bar/0").Scan(&podCount)
+	})
+	c.Assert(err, tc.ErrorIsNil)
+	c.Assert(podCount, tc.Equals, 0)
+
+	// Verify k8s_pod_port rows are gone.
+	var portCount int
+	err = s.TxnRunner().StdTxn(c.Context(), func(ctx context.Context, tx *sql.Tx) error {
+		return tx.QueryRowContext(ctx, `
+SELECT COUNT(*) FROM k8s_pod_port kpp
+JOIN unit u ON kpp.unit_uuid = u.uuid
+WHERE u.name = ?
+`, "bar/0").Scan(&portCount)
+	})
+	c.Assert(err, tc.ErrorIsNil)
+	c.Assert(portCount, tc.Equals, 0)
+
+	// Verify the unit still exists and is alive.
+	var unitLifeID int
+	err = s.TxnRunner().StdTxn(c.Context(), func(ctx context.Context, tx *sql.Tx) error {
+		return tx.QueryRowContext(ctx, "SELECT life_id FROM unit WHERE name = ?", "bar/0").Scan(&unitLifeID)
+	})
+	c.Assert(err, tc.ErrorIsNil)
+	c.Assert(unitLifeID, tc.Equals, 0) // 0 = alive
+}
+
+func (s *unitStateSuite) TestClearCAASUnitCloudContainerUnitNotFound(c *tc.C) {
+	err := s.state.ClearCAASUnitCloudContainer(c.Context(), "nonexistent/0")
+	c.Assert(err, tc.ErrorIs, applicationerrors.UnitNotFound)
+}
+
+func (s *unitStateSuite) TestClearCAASUnitCloudContainerIdempotent(c *tc.C) {
+	s.createCAASScalingApplication(c, "bar", life.Alive, 1)
+
+	// Allow scaling and register a unit with a cloud container.
+	err := s.state.SetApplicationScalingState(c.Context(), "bar", 1, true)
+	c.Assert(err, tc.ErrorIsNil)
+
+	p := application.RegisterCAASUnitArg{
+		UnitName:     "bar/0",
+		PasswordHash: "passwordhash",
+		ProviderID:   "old-pod-abc123",
+		Address:      ptr("10.6.6.6/8"),
+		Ports:        ptr([]string{"8080"}),
+		OrderedScale: true,
+		OrderedId:    0,
+	}
+	err = s.state.RegisterCAASUnit(c.Context(), "bar", p)
+	c.Assert(err, tc.ErrorIsNil)
+
+	// Clear twice — second call should be a no-op.
+	err = s.state.ClearCAASUnitCloudContainer(c.Context(), "bar/0")
+	c.Assert(err, tc.ErrorIsNil)
+	err = s.state.ClearCAASUnitCloudContainer(c.Context(), "bar/0")
+	c.Assert(err, tc.ErrorIsNil)
+}
+
 func deptr[T any](v *T) T {
 	var zero T
 	if v == nil {

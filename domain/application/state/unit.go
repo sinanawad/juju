@@ -257,6 +257,7 @@ SELECT u.name AS &unitName.name
 FROM unit u
 JOIN application a ON u.application_uuid = a.uuid
 WHERE a.name = $entityName.name
+AND   u.life_id < 2
 `
 	stmt, err := st.Prepare(q, input, unitName{})
 	if err != nil {
@@ -2167,6 +2168,58 @@ func encodeResolveMode(mode sql.NullInt16) (string, error) {
 	default:
 		return "", errors.Errorf("unknown resolve mode %d", mode.Int16).Add(coreerrors.NotSupported)
 	}
+}
+
+// ClearCAASUnitCloudContainer removes the k8s_pod row (and its
+// k8s_pod_port children) for a unit identified by name. This is used to
+// clear stale cloud container entries when a Deployment/DaemonSet pod is
+// replaced by Kubernetes with a new randomly-named pod.
+//
+// The following errors may be returned:
+//   - [applicationerrors.UnitNotFound] if the unit does not exist.
+func (st *State) ClearCAASUnitCloudContainer(
+	ctx context.Context,
+	uName coreunit.Name,
+) error {
+	db, err := st.DB(ctx)
+	if err != nil {
+		return errors.Capture(err)
+	}
+
+	nameInput := unitName{Name: uName.String()}
+
+	deletePortsStmt, err := st.Prepare(`
+DELETE FROM k8s_pod_port
+WHERE  unit_uuid = (SELECT uuid FROM unit WHERE name = $unitName.name)
+`, nameInput)
+	if err != nil {
+		return errors.Capture(err)
+	}
+
+	deletePodStmt, err := st.Prepare(`
+DELETE FROM k8s_pod
+WHERE  unit_uuid = (SELECT uuid FROM unit WHERE name = $unitName.name)
+`, nameInput)
+	if err != nil {
+		return errors.Capture(err)
+	}
+
+	err = db.Txn(ctx, func(ctx context.Context, tx *sqlair.TX) error {
+		if err := st.checkUnitExistsByName(ctx, tx, uName.String()); err != nil {
+			return errors.Capture(err)
+		}
+		if err := tx.Query(ctx, deletePortsStmt, nameInput).Run(); err != nil {
+			return errors.Errorf("deleting k8s pod ports for unit %q: %w", uName, err)
+		}
+		if err := tx.Query(ctx, deletePodStmt, nameInput).Run(); err != nil {
+			return errors.Errorf("deleting k8s pod for unit %q: %w", uName, err)
+		}
+		return nil
+	})
+	if err != nil {
+		return errors.Errorf("clearing cloud container for unit %q: %w", uName, err)
+	}
+	return nil
 }
 
 func encodeK8sPodInfo(info unitK8sPodInfo, ports []k8sPodPort) application.K8sPodInfo {

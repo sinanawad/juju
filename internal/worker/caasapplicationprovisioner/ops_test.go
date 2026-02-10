@@ -919,6 +919,89 @@ func (s *OpsSuite) TestProvisioningInfo(c *tc.C) {
 	})
 }
 
+func (s *OpsSuite) TestUpdateStateClearsStalePods(c *tc.C) {
+	ctrl := gomock.NewController(c)
+	defer ctrl.Finish()
+
+	appId, _ := application.NewUUID()
+	app := caasmocks.NewMockApplication(ctrl)
+	broker := mocks.NewMockCAASBroker(ctrl)
+	applicationService := mocks.NewMockApplicationService(ctrl)
+	statusService := mocks.NewMockStatusService(ctrl)
+	now := time.Now()
+	clk := testclock.NewClock(now)
+
+	// DB says unit test/0 has pod "old-pod-abc", but K8s only has "new-pod-xyz".
+	// The old pod is stale and should be cleared.
+	cloudContainerIDs := map[unit.Name]string{
+		"test/0": "old-pod-abc",
+	}
+	k8sUnits := []caas.Unit{{
+		Id:      "new-pod-xyz",
+		Address: "10.0.0.2",
+		Status: status.StatusInfo{
+			Status: status.Running,
+		},
+	}}
+
+	gomock.InOrder(
+		app.EXPECT().Service().Return(nil, errors.NotFoundf("no service")),
+		applicationService.EXPECT().GetAllUnitCloudContainerIDsForApplication(gomock.Any(), appId).Return(cloudContainerIDs, nil),
+		app.EXPECT().Units().Return(k8sUnits, nil),
+		// Stale pod should be cleared.
+		applicationService.EXPECT().ClearCAASUnitCloudContainer(gomock.Any(), unit.Name("test/0")).Return(nil),
+		// The new pod is not mapped to any unit, so it's ignored in the unit update loop.
+		// Annotation loop: unitToPod still has test/0 → old-pod-abc, but the stale entry was
+		// removed from podToUnit. The annotation for test/0 tries to annotate old-pod-abc
+		// but the pod no longer exists, so it returns NotFound (which is ignored).
+		broker.EXPECT().AnnotateUnit(gomock.Any(), "test", "old-pod-abc", names.NewUnitTag("test/0")).Return(errors.NotFoundf("pod gone")),
+	)
+
+	_, err := caasapplicationprovisioner.AppOps.UpdateState(
+		c.Context(), "test", appId, app, nil, broker, applicationService, statusService, clk, s.logger,
+	)
+	c.Assert(err, tc.ErrorIsNil)
+}
+
+func (s *OpsSuite) TestUpdateStateNoStalePodsWhenAllActive(c *tc.C) {
+	ctrl := gomock.NewController(c)
+	defer ctrl.Finish()
+
+	appId, _ := application.NewUUID()
+	app := caasmocks.NewMockApplication(ctrl)
+	broker := mocks.NewMockCAASBroker(ctrl)
+	applicationService := mocks.NewMockApplicationService(ctrl)
+	statusService := mocks.NewMockStatusService(ctrl)
+	now := time.Now()
+	clk := testclock.NewClock(now)
+
+	// DB pod matches K8s pod — no stale entries.
+	cloudContainerIDs := map[unit.Name]string{
+		"test/0": "pod-abc",
+	}
+	k8sUnits := []caas.Unit{{
+		Id:      "pod-abc",
+		Address: "10.0.0.1",
+		Status: status.StatusInfo{
+			Status: status.Running,
+		},
+	}}
+
+	gomock.InOrder(
+		app.EXPECT().Service().Return(nil, errors.NotFoundf("no service")),
+		applicationService.EXPECT().GetAllUnitCloudContainerIDsForApplication(gomock.Any(), appId).Return(cloudContainerIDs, nil),
+		app.EXPECT().Units().Return(k8sUnits, nil),
+		// No ClearCAASUnitCloudContainer expected — pod is still active.
+		applicationService.EXPECT().UpdateCAASUnit(gomock.Any(), unit.Name("test/0"), gomock.Any()).Return(nil),
+		broker.EXPECT().AnnotateUnit(gomock.Any(), "test", "pod-abc", names.NewUnitTag("test/0")).Return(nil),
+	)
+
+	_, err := caasapplicationprovisioner.AppOps.UpdateState(
+		c.Context(), "test", appId, app, nil, broker, applicationService, statusService, clk, s.logger,
+	)
+	c.Assert(err, tc.ErrorIsNil)
+}
+
 func ptr[T any](i T) *T {
 	return &i
 }

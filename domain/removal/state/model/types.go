@@ -160,3 +160,8 @@ func (srs secretRevisions) split() (uuids, uuids) {
 type storageRemoval struct {
 	Obliterate bool `db:"obliterate"`
 }
+
+// sequenceNamespace holds a sequence namespace string.
+type sequenceNamespace struct {
+	Namespace string `db:"namespace"`
+}

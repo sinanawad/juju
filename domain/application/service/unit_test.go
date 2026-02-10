@@ -629,3 +629,31 @@ func (s *unitServiceSuite) TestGetAllUnitCloudContainerIDsForApplicationInvalidA
 	_, err := s.service.GetAllUnitCloudContainerIDsForApplication(c.Context(), appID)
 	c.Assert(err, tc.NotNil)
 }
+
+func (s *unitServiceSuite) TestClearCAASUnitCloudContainer(c *tc.C) {
+	defer s.setupMocks(c).Finish()
+
+	unitName := coreunit.Name("foo/0")
+	s.state.EXPECT().ClearCAASUnitCloudContainer(gomock.Any(), unitName).Return(nil)
+
+	err := s.service.ClearCAASUnitCloudContainer(c.Context(), unitName)
+	c.Assert(err, tc.ErrorIsNil)
+}
+
+func (s *unitServiceSuite) TestClearCAASUnitCloudContainerUnitNotFound(c *tc.C) {
+	defer s.setupMocks(c).Finish()
+
+	unitName := coreunit.Name("foo/0")
+	s.state.EXPECT().ClearCAASUnitCloudContainer(gomock.Any(), unitName).
+		Return(applicationerrors.UnitNotFound)
+
+	err := s.service.ClearCAASUnitCloudContainer(c.Context(), unitName)
+	c.Assert(err, tc.ErrorIs, applicationerrors.UnitNotFound)
+}
+
+func (s *unitServiceSuite) TestClearCAASUnitCloudContainerInvalidName(c *tc.C) {
+	defer s.setupMocks(c).Finish()
+
+	err := s.service.ClearCAASUnitCloudContainer(c.Context(), coreunit.Name(""))
+	c.Assert(err, tc.NotNil)
+}
