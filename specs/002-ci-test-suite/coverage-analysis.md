@@ -1,10 +1,11 @@
-# Juju CI Test Suite: Feature Coverage Analysis (v2)
+# Juju CI Test Suite: Feature Coverage Analysis (v3)
 
 > Comprehensive cross-reference of Juju's feature surface against existing test
 > coverage. Based on deep codebase research across 7 capability domains plus
-> analysis of the norma-k8s calibration charm.
+> analysis of the norma-k8s calibration charm and per-suite audit of all 48
+> integration test suites.
 >
-> **Updated**: 2026-02-15 (v2 — replaces surface-level inventory with per-capability implementation+test analysis)
+> **Updated**: 2026-02-17 (v3 — adds per-suite audit catalog, capability cross-reference, over-testing analysis, and per-suite verdicts)
 
 ## Methodology
 
@@ -414,3 +415,358 @@ Currently only 6 of 50 suites run in CI. Recommended automation order:
 8. **user** — user management and permissions
 9. **credential** — credential management
 10. **upgrade** — upgrade paths (expensive; nightly tier)
+
+---
+
+## 12. Per-Suite Audit Catalog (A1a)
+
+> Generated 2026-02-17. All 48 `tests/suites/*/task.sh` files read and cataloged.
+
+### Master Table
+
+| # | Suite | Tests | Charms | Provider | Lifecycle | Key Capabilities |
+|---|-------|-------|--------|----------|-----------|-----------------|
+| 1 | actions | 2 | juju-qa-action (3P) | all | bootstrap→ensure→destroy_ctl | Action execution, params, operation/task status |
+| 2 | agents | 1 | ubuntu (3P) | all | bootstrap(AGENT_TESTING)→ensure→destroy_ctl | Charm revision updater worker |
+| 3 | appdata | 1 | juju-qa-appdata-{source,sink} (3P) | all | bootstrap→ensure→destroy_model | Relation appdata, unit scaling, config propagation |
+| 4 | authorized_keys | 4 | none | all | ensure→bootstrap(auth-keys)→migrate→destroy_ctl | SSH key CRUD, import (GH/LP), migration |
+| 5 | bootstrap | 1 | ubuntu-lite (3P) | lxd | custom bootstrap→add-model→deploy→cleanup | Simplestream metadata server, agent binary discovery |
+| 6 | caasadmission | 3 | none | k8s | ensure→kubectl→destroy_model | K8s admission webhook, RBAC, label propagation |
+| 7 | charmhub | 4 | juju-qa-test, ubuntu (3P) | all | find/info(no ctl)→bootstrap→deploy→destroy_ctl | Charmhub find/info/download, legacy store rejection |
+| 8 | ck | 2 | charmed-kubernetes, cloud integrators (3P) | ec2/gce/azure | ensure→deploy CK→kubectl→destroy_model | Charmed K8s deployment, cloud overlays, CAAS workload |
+| 9 | cli | 8 | ubuntu-lite, ntp (3P) | all | ensure→cloud/config mgmt→destroy_model | Cloud display, model-config, constraints, block commands |
+| 10 | cloud_azure | 2 | ubuntu-lite, postgresql (3P) | azure | bootstrap(constraints)→HA→deploy→destroy_ctl | Managed identity, storage account type |
+| 11 | cloud_gce | 5 | ubuntu, postgresql (3P) | gce | ensure→deploy→bootstrap(SA)→destroy_model | Pro images, GPU, storage pools, SA credential |
+| 12 | cmr | 2 | juju-qa-dummy-{source,sink} (3P) | all | ensure→deploy→offer→consume→destroy_model/ctl | CMR single+cross-controller, offer/consume lifecycle |
+| 13 | constraints | 3 | ubuntu-lite (3P) | all (per-provider) | ensure→constraints→show-machine→destroy_ctl | Model/app constraints, per-provider validation |
+| 14 | controller | 3 | ubuntu-lite (3P) | all | bootstrap→metrics→HA→tracing→destroy_ctl | Controller metrics, enable-HA, DQLite quorum, tracing |
+| 15 | controllercharm | 3 | prometheus-k8s (3P) | k8s (cross-ctl) | bootstrap(per-test)→deploy prom→destroy_ctl | Controller charm metrics, CMR cross-controller |
+| 16 | coslite | 1 | cos-lite bundle (3P) | k8s | bootstrap→deploy COS→destroy_ctl(KILL) | COS Lite deployment, health checks |
+| 17 | credential | 2 | none | all | JUJU_DATA→add/remove cred→bootstrap→destroy_ctl | Credential add/remove, client-local, controller-bound |
+| 18 | dashboard | 1 | juju-dashboard (3P) | all | bootstrap→deploy dashboard→destroy_ctl | Dashboard charm, controller relation |
+| 19 | deploy | 33 | 20+ charms (mix 3P+local) | all (LXD-specific) | bootstrap→multiple deploys→destroy_ctl | Charm/bundle deploy, placement, LXD profiles, revision, resources, CMR bundle |
+| 20 | deploy_aks | 1 | juju-qa-dummy-{sink,source} (3P) | k8s (AKS) | bootstrap(AKS)→deploy→destroy_ctl | **SKIPPED** — AKS k8s cloud registration |
+| 21 | deploy_caas | 1 | discourse-k8s, postgresql-k8s, redis-k8s, nginx-ingress (3P) | k8s | bootstrap→deploy stack→destroy_ctl | CAAS charm deploy, trust/RBAC, multi-charm |
+| 22 | examples | 3 | none | all | ensure→checks→destroy_model | Template/example test patterns |
+| 23 | firewall | 4 | ubuntu-lite (3P) | ec2/gce | bootstrap→provider-specific tests→destroy_ctl | SSH-allow, expose with CIDRs, endpoint exposure, security groups |
+| 24 | hooks | 3 | ubuntu-plus (local), juju-qa-test (3P) | all | bootstrap→ensure→destroy_ctl | Hook dispatch, start-after-reboot, subordinate hooks, refresh hooks |
+| 25 | hooktools | 1 | ubuntu-lite (3P) | all | bootstrap→ensure→destroy_ctl | state-get/set/delete, uniter state clash |
+| 26 | kubeflow | 1 | kubeflow (3P) | k8s | bootstrap→deploy kubeflow→destroy_ctl(KILL) | Kubeflow deployment, metallb, ingress |
+| 27 | machine | 2 | juju-qa-test (3P) | all | bootstrap→ensure→destroy_ctl | Agent logging, log permissions |
+| 28 | manual | 3 | ubuntu (3P) | lxd/ec2 | create VMs→add-cloud→bootstrap→add-machine(ssh)→destroy_ctl | Manual cloud, SSH machine addition, HA |
+| 29 | model | 10 | ubuntu, easyrsa, etcd, juju-qa-dummy-{src,sink} (3P) | all | bootstrap(primary+alt)→ensure→migrate→destroy_ctls | Model config, migration (cross-ver, secrets), multi-model, SAAS, metrics, destroy tracking |
+| 30 | network | 2 | ubuntu, juju-qa-network-health (3P sub) | all (IP-change: lxd) | bootstrap→ensure→deploy sub→destroy_ctl | Subordinate deploy, network health, connectivity, IP change |
+| 31 | ovs_maas | 1 | juju-qa-space-invader (3P) | maas | bootstrap(tags=ovs)→ensure→deploy→destroy_ctl | OVS bridge, netplan merge, space binding |
+| 32 | refresh | 7 | ubuntu, juju-qa-test, juju-qa-refresher (3P) | all | bootstrap→ensure→refresh tests→destroy_ctl | Local/channel/revision refresh, resource refresh, charm switch |
+| 33 | relations | 4 | juju-qa-dummy-{sink,source}, departer (local) | all | bootstrap→ensure→relation tests→destroy_ctl | Relation data exchange, departing hook, relation-list, model-get, CMR |
+| 34 | resources | 5 | juju-qa-test, juju-qa-container-resource (3P) | all (container: k8s) | bootstrap→ensure→resource tests→destroy_ctl | Repo/local resources, attach, refresh, container images, large files |
+| 35 | secrets_iaas | 8 | juju-qa-dummy-{source,sink} (3P) | all | bootstrap→ensure→secrets tests→destroy_ctl(KILL) | User/charm secrets, rotation, grant/revoke, CMR, vault backend, drain |
+| 36 | secrets_k8s | 6 | alertmanager-k8s, hello (3P) | k8s | bootstrap→ensure→ingress→secrets→destroy_ctl(KILL) | K8s secret backend, RBAC roles, scale-down cleanup, parallel creation |
+| 37 | sidecar | 6 | snappass-test, juju-qa-pebble-* (mix 3P+test) | k8s | ensure→per-test deploy→destroy_model | Pebble notices/checks, credential-get, rootless, force-remove |
+| 38 | smoke | 2 | juju-qa-refresher, juju-qa-test (3P) | all | bootstrap→deploy→destroy_ctl | Build validation, basic deploy from charmhub |
+| 39 | smoke_k8s | 1 | snappass-test (3P) | all | bootstrap→deploy→destroy_ctl | Basic K8s charm deploy |
+| 40 | smoke_k8s_psql | 1 | postgresql-k8s, postgresql-test-app (3P) | k8s | bootstrap→deploy(trust)→integrate→destroy_ctl | PostgreSQL on K8s, relations, storage, actions |
+| 41 | spaces_ec2 | 3 | space-defender (test) | ec2 | bootstrap→setup NIC→space tests→destroy_ctl | Space CRUD, machine-in-space, bind, charm refresh+bind |
+| 42 | spaces_gce | 1 | none | gce | bootstrap→setup VPC→space tests→destroy_ctl | GCE VPC, space CRUD, machine-in-space |
+| 43 | static_analysis | 8 | none | N/A (no bootstrap) | pure static checks | Copyright, license, doc.go, linting, schema, primary keys |
+| 44 | storage | 4 | dummy-storage-* (5 local test charms) | all | bootstrap→storage tests→destroy_ctl | Pool CRUD, attach/detach, fs/block/tmpfs, persistent reattach |
+| 45 | storage_k8s | 6 | postgresql-k8s (3P) | k8s | ensure→per-test→destroy_model | K8s PVC, import-filesystem, attach on deploy/add-unit, scaling race |
+| 46 | unmanaged | 3 | ubuntu (3P) | lxd/ec2 | bootstrap(unmanaged)→add-machine(ssh)→deploy→destroy_ctl | Unmanaged cloud, manual SSH provisioning, HA |
+| 47 | upgrade | 2 | ubuntu-lite (3P) | lxd | bootstrap(prior ver)→upgrade-controller→upgrade-model→destroy_ctl | Multi-version upgrades, agent metadata, version verification |
+| 48 | user | 5 | none | all | bootstrap→ensure→user tests→destroy_ctl | User CRUD, grant/revoke, external users, disable/enable, login/password, register |
+
+**Legend**: 3P = third-party charm, test = local test charm, sub = subordinate
+
+### Charm Usage Summary
+
+| Charm | Type | Used By | Replaceable by norma? |
+|-------|------|---------|----------------------|
+| juju-qa-test | 3P test | smoke, agents, hooks, machine, deploy, resources | Yes (norma) |
+| juju-qa-dummy-{source,sink} | 3P test | appdata, cmr, model, relations, secrets_iaas | Yes (norma) |
+| juju-qa-action | 3P test | actions | Yes (norma) |
+| juju-qa-refresher | 3P test | smoke, refresh | Yes (norma) |
+| juju-qa-appdata-{source,sink} | 3P test | appdata | Yes (norma) |
+| juju-qa-pebble-* | test | sidecar | Partial (norma-k8s covers pebble) |
+| juju-qa-network-health | 3P sub | network | No (subordinate-specific) |
+| juju-qa-space-invader | 3P test | ovs_maas | No (MAAS-specific) |
+| ubuntu-lite | 3P | smoke, cli, controller, constraints, deploy, firewall, hooktools, cloud_*, upgrade | Yes (norma machine) |
+| ubuntu | 3P | agents, manual, model, network, unmanaged, cloud_gce | Yes (norma machine) |
+| snappass-test | 3P | smoke_k8s, sidecar, ck | Yes (norma-k8s) |
+| postgresql-k8s | 3P | smoke_k8s_psql, storage_k8s, deploy_caas | No (tests PG-specific behavior) |
+| discourse-k8s | 3P | deploy_caas | Yes (norma-k8s) |
+| prometheus-k8s | 3P | controllercharm | No (tests Prometheus integration) |
+| cos-lite bundle | 3P | coslite | No (tests COS stack) |
+| charmed-kubernetes | 3P | ck | No (tests CK deployment) |
+| kubeflow | 3P | kubeflow | No (tests Kubeflow deployment) |
+| juju-dashboard | 3P | dashboard | No (tests dashboard specifically) |
+| ntp | 3P | cli | Yes (norma machine) |
+| dummy-storage-* | local test | storage | Keep (purpose-built for storage tests) |
+| departer | local test | relations | Keep (purpose-built for departing hook) |
+| space-defender | test | spaces_ec2 | Keep (purpose-built for space tests) |
+
+---
+
+## 13. Suite-to-Capability Cross-Reference (A1a)
+
+### Domain 1: Deployment & App Lifecycle (30 capabilities)
+
+| Capability | Primary Suite(s) | Also Tested In |
+|------------|-----------------|----------------|
+| deploy (charms) | **deploy** (33 tests) | smoke, smoke_k8s, deploy_caas, most suites |
+| deploy (bundles) | **deploy** | coslite, ck |
+| deploy with channels/revisions | **deploy**, **refresh** | smoke |
+| deploy with constraints | **deploy**, **constraints** | cli |
+| deploy with config | **deploy** | appdata, cmr |
+| deploy with base/series | **deploy** | hooks |
+| refresh (upgrade charm) | **refresh** (7 tests) | deploy, smoke |
+| config get/set | **cli**, **model** | appdata, cmr, deploy |
+| expose | **firewall** | cli, network |
+| scale-application (CAAS) | **deploy_caas** | secrets_k8s, storage_k8s |
+| add-unit / remove-unit | **deploy** | controller, model, secrets |
+| remove-application | **deploy** | sidecar, smoke_k8s_psql |
+| run / exec | **actions** | hooks, machine, model, secrets |
+| ssh / scp | **authorized_keys** | machine, hooks, spaces |
+| application status | **cli** | all (via wait_for) |
+| deploy with resources | **resources** (5 tests) | deploy |
+| deploy with storage | **storage** (4 tests) | storage_k8s |
+| deploy with trust | **deploy_caas** | smoke_k8s_psql |
+| config unset | — | — (gap) |
+| unexpose | **cli** | — |
+| resolved (retry hooks) | **deploy** (resolve charm) | — |
+
+### Domain 2: Relations & Integrations (15 capabilities)
+
+| Capability | Primary Suite(s) | Also Tested In |
+|------------|-----------------|----------------|
+| integrate / add-relation | **relations** (4 tests) | appdata, cmr, deploy |
+| remove-relation | **relations** | cmr, controllercharm |
+| CMR offer | **cmr** (2 tests) | model, relations |
+| CMR consume | **cmr** | model, relations |
+| CMR remove-saas | **cmr** | — |
+| relation data exchange | **relations** | appdata, cmr, model |
+| peer relations | **relations** | — (implicit in scaling) |
+| relation hooks | **hooks** (3 tests) | relations |
+| CMR cross-controller | **cmr** | controllercharm |
+| relation suspension/resume | — | — (gap) |
+| subordinate relations | **network** | hooks |
+| network egress CIDRs | — | — (gap, API-only) |
+| endpoint binding post-deploy | **spaces_ec2** | — |
+| relation constraints (limit) | — | — (gap) |
+
+### Domain 3: Model & Controller Mgmt (22 capabilities)
+
+| Capability | Primary Suite(s) | Also Tested In |
+|------------|-----------------|----------------|
+| bootstrap | **bootstrap** | smoke, upgrade, manual, unmanaged |
+| add-model / destroy-model | **model** (10 tests) | most suites via ensure() |
+| switch | **model** | all (via ensure) |
+| models / show-model | **cli** | model, firewall |
+| controllers / destroy-controller | **controller** | all (cleanup) |
+| add-user / remove-user | **user** (5 tests) | — |
+| grant / revoke | **user** | — |
+| model-config | **cli**, **model** | most suites |
+| migrate | **model** | authorized_keys |
+| disable-command / enable-command | **cli** (block_commands) | — |
+| upgrade-controller | **upgrade** (2 tests) | — |
+| upgrade-model | **upgrade** | — |
+| controller-config | **controller** (tracing) | — |
+| model-defaults | **cli** | — |
+| enable-ha | **controller** | cloud_gce, manual, unmanaged |
+| register / unregister | **user** (register), **cli** (unregister) | — |
+| login / logout | **user** (login_password) | — |
+
+### Domain 4: Cloud, Credentials & Network (25 capabilities)
+
+| Capability | Primary Suite(s) | Also Tested In |
+|------------|-----------------|----------------|
+| add-cloud / remove-cloud / clouds | **cli** (display_clouds) | manual, unmanaged, credential |
+| add-credential / remove-credential | **credential** (2 tests) | — |
+| credentials (list) | **credential** | cloud_gce |
+| add-space / spaces | **spaces_ec2** (3 tests), **spaces_gce** | manual |
+| expose with firewall rules | **firewall** (4 tests) | — |
+| endpoint binding | **spaces_ec2** | ovs_maas |
+| cloud provider suites | **cloud_azure**, **cloud_gce** | — |
+| network health | **network** (2 tests) | — |
+| update-cloud | — | — (gap) |
+| autoload-credentials | — | — (gap) |
+| show-credential | **cloud_gce** | credential |
+| remove-space / rename-space | — | — (gap) |
+| move-to-space | — | — (gap) |
+| reload-spaces | **spaces_ec2**, **spaces_gce** | — |
+| add-subnet / list-subnets | — | — (gap) |
+
+### Domain 5: Secrets, Storage & Resources (30 capabilities)
+
+| Capability | Primary Suite(s) | Also Tested In |
+|------------|-----------------|----------------|
+| secrets (all CRUD) | **secrets_iaas** (8 tests) | — |
+| K8s secrets | **secrets_k8s** (6 tests) | — |
+| secret backends | **secrets_iaas** (vault) | — |
+| secret rotation & expiry | **secrets_iaas** | — |
+| secret drain | **secrets_iaas**, **secrets_k8s** | — |
+| storage lifecycle | **storage** (4 tests) | — |
+| K8s PVC storage | **storage_k8s** (6 tests) | — |
+| storage pool management | **storage**, **cloud_gce** | — |
+| resources (all ops) | **resources** (5 tests) | deploy |
+| OCI image resources | **resources** (container) | — |
+| secret migration | **model** | — |
+
+### Domain 6: K8s/CAAS Specific (18 capabilities)
+
+| Capability | Primary Suite(s) | Also Tested In |
+|------------|-----------------|----------------|
+| StatefulSet workload | **deploy_caas**, **smoke_k8s** | storage_k8s, sidecar |
+| Sidecar/Pebble | **sidecar** (6 tests) | — |
+| K8s RBAC | **caasadmission** (3 tests) | secrets_k8s |
+| K8s namespace management | **caasadmission** | model (via destroy) |
+| CAAS provisioner | **deploy_caas** | — |
+| MicroK8s bootstrap | **smoke_k8s** | most k8s suites |
+| Multi-container | **sidecar** | — |
+| K8s annotations/labels | **caasadmission** | — |
+| Deployment workload type | — | — (**GAP: no integration test**) |
+| DaemonSet workload type | — | — (**GAP: no integration test**) |
+| deployment-type constraint | — | — (**GAP: no integration test**) |
+| K8s service/ingress | **kubeflow** (ingress) | deploy_caas (nginx-ingress) |
+| K8s PVC for Deployment/DaemonSet | — | — (**GAP**) |
+| Init containers | — | — (gap, partial unit tests) |
+| Pod recovery | — | — (**GAP**) |
+| PVC cleanup on app removal | — | — (**GAP: NONE coverage**) |
+
+### Domain 7: Constraints, Machines & Agents (35 capabilities)
+
+| Capability | Primary Suite(s) | Also Tested In |
+|------------|-----------------|----------------|
+| Constraint types & validation | **constraints** (3 tests) | cli |
+| Model constraints get/set | **constraints**, **cli** | — |
+| Constraint enforcement | **constraints** | cloud_azure, cloud_gce |
+| Add/remove machine | **deploy** | constraints, controller, manual |
+| Machine cloud instance | **constraints** | cloud_azure, cloud_gce |
+| Upgrade model/controller | **upgrade** (2 tests) | — |
+| Agent binary management | **upgrade** | bootstrap |
+| Unit agent hooks | **hooks** (3 tests) | deploy, refresh |
+| deployment-type constraint (K8s) | — | — (**GAP**) |
+| Machine containers (LXD) | **deploy** (lxd placement) | — (no `add-machine lxd` test) |
+| Manual provisioning | **manual** (3 tests) | unmanaged |
+| Machine reboot | **hooks** (reboot test) | — |
+| Retry provisioning | — | — (gap) |
+| Agent upgrade flows | **upgrade** | — (no mixed-version test) |
+
+---
+
+## 14. Over-Testing Analysis
+
+Suites testing the **same capability identically** (candidates for consolidation):
+
+| Capability | Overlap | Verdict |
+|------------|---------|---------|
+| Basic charm deploy | smoke + deploy + smoke_k8s + deploy_caas | **Acceptable** — different providers, different depths |
+| CMR offer/consume | cmr + relations + model (migration_saas) | **Minor overlap** — cmr is comprehensive, relations tests relation-model-get, model tests CMR in migration context. Keep all. |
+| Relation data exchange | relations + appdata | **Acceptable** — appdata tests file-based appdata specifically, relations tests databag access |
+| User secrets | secrets_iaas + secrets_k8s + model (secret migration) | **Acceptable** — different backends (juju vs k8s vs vault), model tests migration specifically |
+| Model constraints | constraints + cli (model_constraints) | **Minor overlap** — cli tests basic get/set, constraints tests enforcement per-provider. Keep both. |
+| Storage pools | storage + cloud_gce (create-storage-pool) | **Acceptable** — cloud_gce tests GCE-specific pool types |
+| enable-HA | controller + cloud_gce + manual + unmanaged | **Acceptable** — controller tests HA formally, others use HA as setup |
+| Manual SSH provisioning | manual + unmanaged | **Significant overlap** — both test `add-machine ssh:user@host`. Consider consolidating into one suite. |
+
+**Conclusion**: No critical over-testing requiring immediate action. The manual/unmanaged overlap is the most significant but they test different cloud types (manual cloud vs unmanaged cloud).
+
+---
+
+## 15. Coverage Gap Analysis (Updated)
+
+### Gaps NOT Covered by Any Suite
+
+| Gap | Impact | Severity | Proposed New Suite |
+|-----|--------|----------|-------------------|
+| Deployment workload type (K8s) | New feature entirely untested | HIGH | `deploy_caas_deployment_type` |
+| DaemonSet workload type (K8s) | New feature entirely untested | HIGH | `deploy_caas_deployment_type` |
+| deployment-type constraint (K8s) | New feature entirely untested | HIGH | `constraints_k8s` |
+| K8s PVC for Deployment/DaemonSet | RWO/RWX access mode | HIGH | `storage_k8s_deployment` |
+| PVC cleanup on app removal | Resource leak in K8s | HIGH | `deploy_caas_lifecycle` |
+| Pod recovery (Deployment/DaemonSet) | Stale pod entries | MEDIUM | `deploy_caas_lifecycle` |
+| relation suspension/resume | Same-model untested | LOW | enhance `relations` |
+| config unset | No integration test | LOW | enhance `cli` |
+| update-cloud | No integration test | LOW | enhance `credential` |
+| autoload-credentials | No integration test | LOW | enhance `credential` |
+| remove-space / rename-space | No integration test | LOW | enhance `spaces_ec2` |
+| add-subnet / list-subnets | No integration test | LOW | enhance `spaces_ec2` |
+| Init containers | Partial unit tests only | MEDIUM | enhance `sidecar` |
+| Agent mixed versions | No test | MEDIUM | enhance `upgrade` |
+
+### Gaps Partially Covered (Enhancement Opportunities)
+
+| Gap | Current State | Enhancement |
+|-----|--------------|-------------|
+| Machine containers (LXD `add-machine lxd`) | deploy tests LXD placement but not `add-machine lxd` | Add to `deploy` or new `machine_containers` |
+| Subordinate end-to-end | network uses sub, hooks tests sub hooks, but no full lifecycle test | Enhance `relations` |
+| Retry provisioning | Command exists, minimal coverage | Enhance `constraints` or `deploy` |
+| Controller-config | Only tracing tested in controller suite | Enhance `controller` |
+| Model-defaults | Only basic test in cli suite | Enhance `model` |
+
+---
+
+## 16. Per-Suite Verdicts (A1a)
+
+Default is **keep** or **enhance** per FR-057. Justification required for migrate or rewrite.
+
+| Suite | Verdict | Justification |
+|-------|---------|---------------|
+| actions | **enhance** | Swap juju-qa-action → norma; add substrate verification |
+| agents | **keep** | Unique capability (revision updater), minimal charm dependency |
+| appdata | **enhance** | Swap juju-qa-appdata-* → norma self-relation; add substrate verification |
+| authorized_keys | **keep** | No charms deployed; tests pure juju CLI operations |
+| bootstrap | **keep** | Tests simplestream metadata (unique); minimal charm dependency |
+| caasadmission | **keep** | No charms deployed; tests K8s admission (unique, well-isolated) |
+| charmhub | **keep** | Tests charmhub API directly; charm deploy is incidental |
+| ck | **keep** | Tests Charmed Kubernetes specifically (cannot use norma) |
+| cli | **enhance** | Add config-unset test, enhance constraint coverage; charm swap minimal (ubuntu-lite → norma machine) |
+| cloud_azure | **keep** | Tests Azure-specific capabilities; cannot use norma |
+| cloud_gce | **keep** | Tests GCE-specific capabilities; cannot use norma |
+| cmr | **enhance** | Swap juju-qa-dummy-* → norma; add substrate verification |
+| constraints | **enhance** | Add deployment-type constraint test for K8s; swap ubuntu-lite → norma |
+| controller | **enhance** | Add controller-config coverage; swap ubuntu-lite → norma |
+| controllercharm | **keep** | Tests Prometheus integration specifically; cannot use norma |
+| coslite | **keep** | Tests COS Lite bundle specifically; cannot use norma |
+| credential | **enhance** | Add autoload-credentials test; no charm changes needed |
+| dashboard | **keep** | Tests juju-dashboard specifically; cannot use norma |
+| deploy | **enhance** | Swap some juju-qa-test → norma in applicable tests; add substrate verification to key deploy paths |
+| deploy_aks | **keep** | Currently skipped; re-enable when AKS available |
+| deploy_caas | **migrate** | Swap discourse-k8s/postgresql-k8s/redis-k8s → norma-k8s; current charms test charm behavior not Juju behavior. Norma-k8s provides equivalent deploy+relate+trust flow. |
+| examples | **keep** | Template suite; no changes needed |
+| firewall | **keep** | Tests provider-specific firewall rules; charm is incidental (ubuntu-lite) |
+| hooks | **enhance** | Swap juju-qa-test → norma; add substrate verification |
+| hooktools | **keep** | Tests hook tools directly; charm is incidental (ubuntu-lite) |
+| kubeflow | **keep** | Tests Kubeflow specifically; cannot use norma |
+| machine | **enhance** | Swap juju-qa-test → norma; minimal changes |
+| manual | **keep** | Tests manual provisioning specifically; ubuntu is appropriate |
+| model | **enhance** | Swap juju-qa-dummy-* → norma for migration tests; add model-defaults coverage |
+| network | **keep** | Uses subordinate charm (juju-qa-network-health) specifically; cannot swap |
+| ovs_maas | **keep** | Tests MAAS OVS specifically; uses space-invader charm appropriately |
+| refresh | **enhance** | Some charm swaps possible (juju-qa-test → norma); core refresh logic must keep current charms |
+| relations | **enhance** | Swap juju-qa-dummy-* → norma; add relation suspension/resume test |
+| resources | **keep** | Tests resource system specifically; requires resource-enabled charms |
+| secrets_iaas | **enhance** | Swap juju-qa-dummy-* → norma; tests are well-structured, charm swap is straightforward |
+| secrets_k8s | **enhance** | Swap alertmanager-k8s → norma-k8s where feasible; some tests need specific charm behavior |
+| sidecar | **keep** | Uses purpose-built pebble test charms; partially norma-k8s compatible |
+| smoke | **enhance** | Swap juju-qa-refresher/juju-qa-test → norma; add substrate verification |
+| smoke_k8s | **migrate** | Swap snappass-test → norma-k8s; current charm tests charm, not Juju. Norma-k8s provides equivalent K8s deploy validation. |
+| smoke_k8s_psql | **migrate** | Swap postgresql-k8s → norma-k8s with storage; current suite tests PG-specific behavior. Norma-k8s storage + actions provides equivalent Juju validation. |
+| spaces_ec2 | **enhance** | Add remove-space, rename-space, subnet tests; charm is appropriate |
+| spaces_gce | **keep** | Tests GCE spaces specifically; well-structured |
+| static_analysis | **keep** | No charms; pure static analysis |
+| storage | **keep** | Uses purpose-built storage test charms; cannot swap to norma |
+| storage_k8s | **migrate** | Swap postgresql-k8s → norma-k8s with storage capabilities; current suite tests PG storage behavior, not generic Juju K8s storage. |
+| unmanaged | **keep** | Tests unmanaged cloud specifically; ubuntu is appropriate |
+| upgrade | **keep** | Tests upgrade paths specifically; charm is incidental |
+| user | **keep** | No charms; tests user management CLI |
+
+### Verdict Summary
+
+| Verdict | Count | Suites |
+|---------|-------|--------|
+| **keep** | 24 | agents, authorized_keys, bootstrap, caasadmission, charmhub, ck, cloud_azure, cloud_gce, controllercharm, coslite, dashboard, deploy_aks, examples, firewall, hooktools, kubeflow, manual, network, ovs_maas, resources, sidecar, spaces_gce, static_analysis, storage, unmanaged, upgrade, user |
+| **enhance** | 20 | actions, appdata, cli, cmr, constraints, controller, credential, deploy, hooks, machine, model, refresh, relations, secrets_iaas, secrets_k8s, smoke, spaces_ec2 |
+| **migrate** | 4 | deploy_caas, smoke_k8s, smoke_k8s_psql, storage_k8s |
+| **rewrite** | 0 | — |
+
+**Migration rationale**: The 4 suites verdicted as "migrate" all use heavyweight third-party charms (discourse-k8s, postgresql-k8s, snappass-test, redis-k8s) where the test validates charm behavior rather than Juju behavior. Swapping to norma-k8s (calibration charm) isolates the Juju feature being tested and reduces external dependencies per FR-037.
