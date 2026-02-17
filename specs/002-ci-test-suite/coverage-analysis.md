@@ -1,11 +1,11 @@
-# Juju CI Test Suite: Feature Coverage Analysis (v3)
+# Juju CI Test Suite: Feature Coverage Analysis (v4)
 
 > Comprehensive cross-reference of Juju's feature surface against existing test
 > coverage. Based on deep codebase research across 7 capability domains plus
 > analysis of the norma-k8s calibration charm and per-suite audit of all 48
 > integration test suites.
 >
-> **Updated**: 2026-02-17 (v3 — adds per-suite audit catalog, capability cross-reference, over-testing analysis, and per-suite verdicts)
+> **Updated**: 2026-02-17 (v4 — adds quality audit scores, implicit DAG mapping, migration plans, and charm contract handoff)
 
 ## Methodology
 
@@ -770,3 +770,505 @@ Default is **keep** or **enhance** per FR-057. Justification required for migrat
 | **rewrite** | 0 | — |
 
 **Migration rationale**: The 4 suites verdicted as "migrate" all use heavyweight third-party charms (discourse-k8s, postgresql-k8s, snappass-test, redis-k8s) where the test validates charm behavior rather than Juju behavior. Swapping to norma-k8s (calibration charm) isolates the Juju feature being tested and reduces external dependencies per FR-037.
+
+---
+
+## 17. Quality Audit Scores (A1b)
+
+> Generated 2026-02-17. Each suite scored on three quality dimensions per plan A1b.
+
+**Scoring rubric**:
+
+| Dimension | 2 | 1 | 0 |
+|-----------|---|---|---|
+| **Sterility (S)** | No charms or calibration charms | Lightweight test charms (juju-qa-*, ubuntu-lite, local test) | Heavyweight 3P charms testing charm behavior |
+| **Substrate Verification (V)** | Checks substrate state (kubectl/lxc/cloud CLI) | Partial checks or setup-only substrate access | No substrate verification — Juju status only |
+| **Fail-fast Readiness (F)** | Tests independent or trivial linear chain | Implicit ordering, shared state but separable | Tightly coupled, complex shared state |
+
+### Per-Suite Quality Scores
+
+| Suite | S | V | F | Total | Notes |
+|-------|---|---|---|-------|-------|
+| actions | 1 | 0 | 1 | 2 | juju-qa-action (test charm); 2 sequential tests sharing model |
+| agents | 1 | 0 | 2 | 3 | ubuntu (lightweight); single test, trivial DAG |
+| appdata | 1 | 0 | 2 | 3 | juju-qa-appdata (test charm); single test |
+| authorized_keys | 2 | 0 | 1 | 3 | No charms; test_machine_ssh depends on test_user_ssh_keys state |
+| bootstrap | 1 | 0 | 2 | 3 | ubuntu-lite (incidental); single test |
+| caasadmission | 2 | 2 | 2 | 6 | No charms; heavy kubectl verification; tests independent via ensure |
+| charmhub | 1 | 0 | 1 | 2 | 3P deploy incidental; 2 offline + 2 bootstrap tests, mixed ordering |
+| ck | 0 | 1 | 1 | 2 | Charmed K8s (tests CK, not Juju); kubectl for CK verification |
+| cli | 1 | 0 | 1 | 2 | ubuntu-lite (incidental); 8 tests, model_defaults modifies controller state |
+| cloud_azure | 1 | 0 | 1 | 2 | ubuntu-lite + postgresql (incidental); sequential with shared ctl |
+| cloud_gce | 1 | 0 | 1 | 2 | ubuntu + postgresql (incidental); test_serviceaccount independent bootstrap |
+| cmr | 1 | 0 | 1 | 2 | juju-qa-dummy (test charm); cross-controller needs sequential |
+| constraints | 1 | 0 | 1 | 2 | ubuntu-lite (incidental); per-provider execution |
+| controller | 1 | 0 | 1 | 2 | ubuntu-lite (incidental); enable-HA modifies controller state |
+| controllercharm | 0 | 0 | 2 | 2 | prometheus-k8s (tests Prometheus); each subtest bootstraps independently |
+| coslite | 0 | 0 | 2 | 2 | cos-lite bundle (tests COS); single test |
+| credential | 2 | 0 | 1 | 3 | No charms; 2 sequential tests |
+| dashboard | 0 | 0 | 2 | 2 | juju-dashboard (tests dashboard); single test |
+| deploy | 1 | 0 | 0 | 1 | 20+ charms (mix); 33 tests sharing single bootstrap, deeply coupled |
+| deploy_aks | 0 | 0 | 2 | 2 | juju-qa-dummy (3P); single test (SKIPPED) |
+| deploy_caas | 0 | 0 | 2 | 2 | discourse/postgresql/redis (3P); single test |
+| examples | 2 | 0 | 2 | 4 | No charms; template tests, all independent |
+| firewall | 1 | 0 | 1 | 2 | ubuntu-lite (incidental); per-provider tests, independent models |
+| hooks | 1 | 0 | 1 | 2 | ubuntu-plus (local) + juju-qa-test; tests share bootstrap |
+| hooktools | 1 | 0 | 2 | 3 | ubuntu-lite (incidental); single test |
+| kubeflow | 0 | 1 | 2 | 3 | Kubeflow (tests KF); kubectl for KF health checks; single test |
+| machine | 1 | 0 | 2 | 3 | juju-qa-test; 2 independent tests via ensure |
+| manual | 1 | 1 | 1 | 3 | ubuntu (incidental); lxc for VM IP; sequential VM + bootstrap |
+| model | 1 | 0 | 1 | 2 | ubuntu, juju-qa-dummy (test charms); 10 tests, metrics restarts jujud |
+| network | 1 | 0 | 2 | 3 | ubuntu + sub (specific); 2 independent tests via ensure |
+| ovs_maas | 1 | 0 | 2 | 3 | space-invader (specific); single test |
+| refresh | 1 | 0 | 1 | 2 | ubuntu, juju-qa-* (test charms); test_basic chain is sequential |
+| relations | 1 | 0 | 1 | 2 | juju-qa-dummy + departer (mixed); 4 tests, independent models |
+| resources | 1 | 0 | 1 | 2 | juju-qa-test; 5 tests, independent but sequential |
+| secrets_iaas | 1 | 1 | 1 | 3 | juju-qa-dummy (test charm); kubectl for K8s backend setup; 7 tests |
+| secrets_k8s | 0 | 2 | 1 | 3 | alertmanager-k8s (3P); heavy kubectl verification of K8s secrets/RBAC |
+| sidecar | 1 | 0 | 2 | 3 | juju-qa-pebble-* (test charms); model-per-test, fully independent |
+| smoke | 1 | 0 | 1 | 2 | juju-qa-refresher + juju-qa-test; test_build → test_deploy sequential |
+| smoke_k8s | 0 | 0 | 2 | 2 | snappass-test (3P); single test |
+| smoke_k8s_psql | 0 | 0 | 2 | 2 | postgresql-k8s (3P); single test |
+| spaces_ec2 | 1 | 0 | 1 | 2 | space-defender (test charm); 3 tests with VPC state dependency |
+| spaces_gce | 2 | 0 | 2 | 4 | No charms; single test, VPC setup |
+| static_analysis | 2 | 0 | 2 | 4 | No charms/bootstrap; all 8 tests fully independent |
+| storage | 1 | 0 | 1 | 2 | dummy-storage-* (local test); 4 tests with shared bootstrap |
+| storage_k8s | 0 | 2 | 2 | 4 | postgresql-k8s (3P); heavy kubectl PV/PVC verification; model-per-test |
+| unmanaged | 1 | 1 | 1 | 3 | ubuntu (incidental); lxc for VM IP; sequential VM + bootstrap |
+| upgrade | 1 | 0 | 1 | 2 | ubuntu-lite (incidental); sequential version upgrades |
+| user | 2 | 0 | 1 | 3 | No charms; login_password modifies admin password |
+
+### Score Distribution
+
+| Total Score | Count | Suites |
+|-------------|-------|--------|
+| 6 | 1 | caasadmission |
+| 4 | 4 | examples, spaces_gce, static_analysis, storage_k8s |
+| 3 | 14 | agents, appdata, authorized_keys, bootstrap, credential, hooktools, kubeflow, machine, manual, network, ovs_maas, secrets_iaas, secrets_k8s, sidecar, unmanaged, user |
+| 2 | 28 | actions, charmhub, ck, cli, cloud_azure, cloud_gce, cmr, constraints, controller, controllercharm, coslite, dashboard, deploy_aks, deploy_caas, firewall, hooks, model, refresh, relations, resources, smoke, smoke_k8s, smoke_k8s_psql, spaces_ec2, storage, upgrade |
+| 1 | 1 | deploy |
+
+### Dimension Summaries
+
+| Dimension | Score 2 | Score 1 | Score 0 |
+|-----------|---------|---------|---------|
+| Sterility | 7 (no charms) | 30 (lightweight) | 11 (heavyweight 3P) |
+| Substrate Verification | 3 (present) | 5 (partial) | 40 (absent) |
+| Fail-fast Readiness | 21 (independent) | 26 (implicit ordering) | 1 (tightly coupled) |
+
+### FR-045 Notes: Where Substrate Verification Is Impractical
+
+Per FR-045, the following categories of tests cannot practically verify at the substrate level. Fallback verification strategies documented:
+
+| Category | Suites | Why Impractical | Fallback Strategy |
+|----------|--------|-----------------|-------------------|
+| CLI-only operations | authorized_keys, cli, credential, user | No infrastructure created/modified | `juju status --format=json` + `jq` assertions |
+| Model config/constraints | cli, constraints, model | Configuration is internal state | `juju model-config --format=json`, `juju constraints` |
+| Charmhub API | charmhub | Remote API calls, no local substrate | HTTP response verification via `juju info/find` |
+| Static analysis | static_analysis | Source-only, no runtime | Exit codes + output assertions |
+| Template/examples | examples | Demonstration suite, no real operations | N/A |
+| External cloud (integration tier) | cloud_azure, cloud_gce, spaces_ec2, spaces_gce | Cloud CLI access inconsistent in CI | `gcloud`/`aws` CLI when available; `juju show-machine` as fallback |
+| Multi-controller migration | model (migration tests) | Cross-controller state hard to verify | `juju status` on both controllers + `juju show-model` |
+
+---
+
+## 18. Implicit Test Dependency DAGs (A1b)
+
+> Generated 2026-02-17. Maps implicit inter-test dependencies within each suite.
+> Format: `setup → {independent_tests}` or `setup → test_A → test_B` for sequential chains.
+
+### DAG Legend
+
+- `→` = depends on (must complete first)
+- `{a, b, c}` = parallel group (no dependencies between items)
+- `[P]` = provider-specific subset
+- `*` = creates own bootstrap (independent of suite bootstrap)
+
+### Trivial DAGs (1-2 tests)
+
+| Suite | DAG | Model Isolation |
+|-------|-----|-----------------|
+| agents | bootstrap → test_revision_update_enabled | ensure (isolated) |
+| appdata | bootstrap → test_relation_data | ensure (isolated) |
+| bootstrap | custom_bootstrap → test_bootstrap_simplestreams | own bootstrap |
+| coslite | bootstrap → test_coslite | ensure (isolated) |
+| dashboard | bootstrap → test_dashboard | ensure (isolated) |
+| deploy_aks | bootstrap → test_deploy_aks (SKIPPED) | ensure (isolated) |
+| deploy_caas | bootstrap → test_deploy_charm | ensure (isolated) |
+| hooktools | bootstrap → test_hooktools | ensure (isolated) |
+| kubeflow | bootstrap → test_kubeflow | ensure (isolated) |
+| ovs_maas | bootstrap → test_ovs | ensure (isolated) |
+| smoke_k8s | bootstrap → test_deploy | ensure (isolated) |
+| smoke_k8s_psql | bootstrap → test_deploy_postgresql | ensure (isolated) |
+| spaces_gce | bootstrap → test_spaces_gce | ensure (isolated) |
+
+### Small DAGs (3-5 tests)
+
+**actions** (2 tests):
+```
+bootstrap → {test_actions, test_task_operations}
+```
+Both share model via ensure — independent.
+
+**authorized_keys** (4 tests):
+```
+bootstrap → test_user_ssh_keys → test_machine_ssh
+         ↘ test_bootstrap_authorized_keys*
+         ↘ test_migrate_authorized_keys*
+```
+test_machine_ssh needs machines from test_user_ssh_keys. Bootstrap/migrate tests create own controllers.
+
+**caasadmission** (3 tests):
+```
+bootstrap → {test_admission_label_propagation, test_admission_rbac, test_admission_label_propagation_new}
+```
+All tests independent via ensure, each creates own model.
+
+**charmhub** (4 tests):
+```
+{test_charmhub_find, test_charmhub_info} → bootstrap → {test_charmhub_download, test_charmhub_deploy_lxd}
+```
+Find/info need no bootstrap; download/deploy need controller.
+
+**cmr** (2 tests):
+```
+bootstrap → run_offer_consume → run_offer_consume_cross_controller
+```
+Cross-controller test bootstraps secondary controller; sequential within test_offer_consume.
+
+**constraints** (3 tests):
+```
+bootstrap → {test_constraints_common, test_constraints_model*}
+```
+test_constraints_model creates own bootstrap with constraints.
+
+**controller** (3 tests):
+```
+bootstrap → test_metrics → test_enable_ha → test_query_tracing
+```
+Sequential: enable-HA modifies controller state (3→1 machines), tracing runs after.
+
+**credential** (2 tests):
+```
+bootstrap → test_credential_add_remove → test_credential_client_local
+```
+Sequential within shared bootstrap.
+
+**examples** (3 tests):
+```
+bootstrap → {test_example_1, test_example_2, test_example_3}
+```
+All independent via ensure.
+
+**firewall** (4 tests) [P: ec2/gce]:
+```
+bootstrap → {test_firewall_ssh_ec2[ec2], test_firewall_ssh_gce[gce], test_expose_app_ec2[ec2], test_bundle_with_exposed_endpoints}
+```
+All independent models; provider-gated subtests.
+
+**hooks** (3 tests):
+```
+bootstrap → {test_dispatching_script, test_start_hook_fires_after_reboot}
+```
+Independent — each creates own models. Subordinate hook test is within dispatching.
+
+**machine** (2 tests):
+```
+bootstrap → {test_machine_logging, test_machine_logging_permissions}
+```
+Both independent via ensure.
+
+**manual** (3 tests):
+```
+test_deploy_manual* [lxd/ec2] → cleanup
+test_spaces_manual* [ec2] → cleanup
+```
+Each test creates own VMs, bootstrap, and controller. Fully independent.
+
+**network** (2 tests):
+```
+bootstrap → {test_network_health, test_ip_change}
+```
+Independent via ensure. IP change is LXD-specific.
+
+**relations** (4 tests):
+```
+bootstrap → {test_relation_data_exchange, test_relation_departing_unit, test_relation_list_app, test_relation_model_get}
+```
+All create isolated models — fully independent.
+
+**resources** (5 tests):
+```
+bootstrap → {test_basic_resources, test_upgrade_resources, test_empty_resources, test_container_resources[k8s]}
+```
+All create isolated models. Container resources requires K8s + podman.
+
+**smoke** (2 tests):
+```
+bootstrap → test_build → test_deploy
+```
+Sequential: build validates `juju` binary, deploy uses it.
+
+**storage** (4 tests):
+```
+bootstrap → {test_charm_storage, test_model_storage_block[iaas], test_model_storage_filesystem, test_persistent_storage}
+```
+All create isolated models. Block storage skips on LXD.
+
+**unmanaged** (3 tests):
+```
+test_deploy_unmanaged* [lxd/ec2] → cleanup
+test_spaces_unmanaged* [ec2] → cleanup
+```
+Each test creates own VMs and controller. Fully independent.
+
+**upgrade** (2 tests):
+```
+bootstrap(prior_ver) → test_upgrade → test_upgrade_multi
+```
+Sequential: version upgrades must preserve controller state.
+
+**user** (5 tests):
+```
+bootstrap → test_user_manage → test_user_login_password → test_user_register
+```
+Sequential: manage creates users, login_password changes admin password, register uses admin context.
+
+### Complex DAGs (6+ tests)
+
+**cli** (8 tests):
+```
+bootstrap → {test_display_clouds, test_unregister}
+         → test_model_config
+         → test_model_defaults → test_model_constraints
+         → test_block_commands
+```
+test_model_defaults modifies controller-level defaults (saves/restores). test_display_clouds and test_unregister use isolated JUJU_DATA.
+
+**cloud_gce** (5 tests):
+```
+bootstrap → {test_pro_images, test_deploy_gpu_instance, test_create_storage_pool}
+test_serviceaccount_credential*
+```
+First 3 share bootstrap, create isolated models. SA credential bootstraps its own controller with enable-HA.
+
+**controllercharm** (3 tests):
+```
+{run_prometheus*, run_prometheus_multiple_units*, run_prometheus_cross_controller*}
+```
+Each subtest bootstraps its own controller — fully independent.
+
+**deploy** (33 tests — most complex):
+```
+bootstrap → {test_deploy_charms, test_deploy_bundles, test_cmr_bundles_export_overlay, test_deploy_revision, test_deploy_default_series}
+```
+Each top-level test creates isolated models via ensure. Within each, sub-tests (run_*) are sequential in shared model but each creates/destroys its own model. **All 5 top-level tests can run in parallel** after bootstrap.
+
+**model** (10 tests):
+```
+bootstrap → {test_model_config, test_model_migration, test_model_migration_version, test_model_migration_saas_common, test_model_migration_saas_external, test_model_multi, test_model_status, test_model_destroy}
+                                                                                                                                                                    ↓
+                                                                                                                                              test_model_metrics (restarts jujud — run last)
+```
+Most tests create isolated models. Migration tests bootstrap alt controllers. Metrics restarts controller jujud — should run after other tests.
+
+**refresh** (7 tests):
+```
+bootstrap → test_basic: run_refresh_local → run_refresh_local_resources → run_refresh_channel → run_refresh_channel_no_new_revision → run_refresh_revision
+         → test_switch: run_refresh_switch_local_to_ch_channel
+```
+test_basic is a sequential chain (shared model state). test_switch is independent.
+
+**secrets_iaas** (8 tests):
+```
+bootstrap → {test_secrets_juju, test_secrets_cmr, test_obsolete_revisions, test_secrets_vault, test_secret_drain, test_user_secret_drain, test_secrets_k8s[k8s]}
+```
+All create isolated models. Vault tests (3) share vault setup but each manages own model.
+
+**secrets_k8s** (6 tests):
+```
+bootstrap → {test_secrets, test_user_secrets, test_secret_drain, test_user_secret_drain, test_add_multiple_secrets_parallel}
+```
+All create isolated models. Parallel secrets test uses KILL_CONTROLLER=true cleanup.
+
+**sidecar** (6 tests):
+```
+bootstrap → {test_deploy_and_remove_application, test_deploy_and_force_remove_application, test_pebble_notices, test_pebble_checks, test_credential_get_k8s, test_rootless}
+```
+All fully independent — each creates own model via ensure and destroys it.
+
+**static_analysis** (8 tests):
+```
+{test_copyright, test_licence, test_doc_go, test_versions, test_static_analysis_shell, test_static_analysis_python, test_schema, test_text_primary_key}
+→ test_static_analysis_go (slow)
+```
+No bootstrap. All 8 quick tests fully independent. Go analysis runs last (slow).
+
+**storage_k8s** (6 tests):
+```
+bootstrap → {test_import_filesystem, test_force_import_filesystem, test_deploy_attach_storage, test_add_unit_attach_storage, test_add_unit_duplicate_pvc_exists, test_add_unit_attach_storage_scaling_race_condition}
+```
+All fully independent — each creates own model via ensure.
+
+**cloud_azure** (2 tests):
+```
+bootstrap(constraints) → test_managed_identity → test_storage_account_type
+```
+Sequential with shared bootstrap using managed identity constraints.
+
+---
+
+## 19. Migration Plans (A1b)
+
+> Per-suite migration plans for the 4 suites verdicted as "migrate" in section 16.
+
+### 19.1 deploy_caas → norma-k8s
+
+**Current state**: Deploys discourse-k8s + postgresql-k8s + redis-k8s + nginx-ingress-integrator. Validates multi-charm K8s deployment with trust, relations, and an action call to create a Discourse user.
+
+**Problem**: Test validates Discourse charm behavior (user creation action) rather than Juju's K8s deployment mechanics (deploy, relate, trust, scale).
+
+**Migration plan**:
+1. **Swap charms**: Replace 4 heavyweight charms with 2 norma-k8s instances:
+   - `norma-k8s` as `norma-provider` (replaces discourse-k8s role)
+   - `norma-k8s` as `norma-requirer` (replaces postgresql-k8s role)
+   - Remove redis-k8s and nginx-ingress-integrator (not testing Juju features)
+2. **Preserve Juju capabilities tested**:
+   - `juju deploy` on K8s (**CC-01**: event lifecycle confirms deploy events)
+   - `juju trust` (**CC-K1**: Pebble verifies workload is managed)
+   - `juju integrate` (**CC-06**: calibration-provider/requirer relation)
+   - Wait for active/idle via `juju status`
+3. **Add substrate verification**:
+   - `substrate_check_pod_exists norma-provider` after deploy
+   - `substrate_check_pod_count norma-provider 1` after deploy
+   - `substrate_check_namespace_gone` after destroy-model
+4. **Replace action call**: Instead of `discourse-k8s/0 create-user`, use `norma-provider/0 run-check capability=relations` (**CC-04**)
+5. **Add DAG**: Single test, trivial DAG — no change needed
+6. **Charm contracts required**: CC-01, CC-04, CC-06, CC-K1
+
+### 19.2 smoke_k8s → norma-k8s
+
+**Current state**: Deploys snappass-test (revision 8, stable channel). Waits for idle. That's it.
+
+**Problem**: Tests that snappass-test charm works, not that Juju can deploy a K8s charm. Any charm failure looks like a Juju failure.
+
+**Migration plan**:
+1. **Swap charm**: Replace `snappass-test` with `norma-k8s`
+   - `juju deploy norma-k8s`
+   - `wait_for "norma-k8s" "$(idle_condition "norma-k8s")"`
+2. **Add verification**:
+   - `juju run norma-k8s/0 run-check capability=deploy` (**CC-04**: confirms charm received install + start events)
+   - `substrate_check_pod_exists norma-k8s` after deploy
+3. **Preserve smoke semantics**: Keep it fast (single charm, no relations, no scaling)
+4. **Add DAG**: Single test, trivial DAG — no change needed
+5. **Charm contracts required**: CC-01, CC-04, CC-K1
+
+### 19.3 smoke_k8s_psql → norma-k8s with storage
+
+**Current state**: Deploys postgresql-k8s (trust, 16/edge) + postgresql-test-app. Integrates them. Runs continuous-write action to verify DB connectivity. Complex charm-specific behavior.
+
+**Problem**: Tests PostgreSQL's continuous-write capability and charm-level database integration, not Juju's deploy+integrate+trust+storage mechanics.
+
+**Migration plan**:
+1. **Swap charms**: Replace postgresql-k8s + postgresql-test-app with norma-k8s pair:
+   - `norma-k8s` as `norma-db` with storage: `juju deploy norma-k8s norma-db --trust --storage data=1G` (**CC-K10**)
+   - `norma-k8s` as `norma-client`: `juju deploy norma-k8s norma-client`
+2. **Preserve Juju capabilities tested**:
+   - `juju deploy --trust` (RBAC token)
+   - `juju deploy --storage` (PVC creation)
+   - `juju integrate norma-db norma-client` (**CC-06**: relation lifecycle)
+   - Wait for active/idle
+3. **Replace continuous-write verification**:
+   - `juju run norma-db/0 check-storage` (**CC-10**: confirms storage attached and writable)
+   - `juju run norma-client/0 run-check capability=relations` (**CC-04**: confirms relation data received)
+4. **Add substrate verification**:
+   - `substrate_check_pvc_exists` for norma-db storage
+   - `substrate_check_pod_count norma-db 1`
+5. **Add DAG**: Single test, trivial DAG — no change needed
+6. **Charm contracts required**: CC-01, CC-04, CC-06, CC-10, CC-K1, CC-K10
+
+### 19.4 storage_k8s → norma-k8s with storage
+
+**Current state**: Uses postgresql-k8s to test K8s PVC import-filesystem, deploy-attach-storage, add-unit-attach-storage, duplicate PVC handling, and scaling race conditions. Heavy `microk8s kubectl` usage for PV/PVC manipulation.
+
+**Problem**: Tests PVC mechanics through postgresql-k8s lens. PG-specific storage names (pgdata), PG-specific StatefulSet behavior. Norma-k8s provides equivalent storage lifecycle with cleaner isolation.
+
+**Migration plan**:
+1. **Swap charm**: Replace `postgresql-k8s` with `norma-k8s` across all 6 sub-tests:
+   - `juju deploy norma-k8s --storage data=1G` (instead of `postgresql-k8s --storage pgdata=...`)
+   - Update all PVC name references from `pgdata` to `data`
+   - Update all StatefulSet name references
+2. **Preserve Juju capabilities tested** (all 6 tests):
+   - `test_import_filesystem`: `juju import-filesystem` with retained PVs — same mechanics, different charm (**CC-K10**)
+   - `test_force_import_filesystem`: `juju import-filesystem --force` — same mechanics
+   - `test_deploy_attach_storage`: Deploy into retained PV — same mechanics (**CC-10**)
+   - `test_add_unit_attach_storage`: `juju add-unit` with pre-existing PVs — same mechanics
+   - `test_add_unit_duplicate_pvc_exists`: Label collision recovery — same mechanics
+   - `test_add_unit_attach_storage_scaling_race_condition`: Race condition fix — same mechanics
+3. **Keep existing substrate verification**: This suite already has excellent kubectl verification (score 2). Only update resource names.
+4. **Update kubectl references**:
+   - PVC names: `pgdata` → `data`
+   - StatefulSet: `postgresql-k8s` → `norma-k8s`
+   - Storage labels: `storage.juju.is/name` assertions stay the same
+5. **Add DAG**: All 6 tests already independent (model-per-test) — just declare in predicates.yaml
+6. **Charm contracts required**: CC-01, CC-04, CC-10, CC-K1, CC-K10
+7. **Risk**: Import-filesystem and PV retention tests depend on specific StatefulSet PVC naming conventions. Norma-k8s must produce equivalent PVC patterns. Verify with `microk8s kubectl get pvc` after deploy.
+
+---
+
+## 20. Charm Contract Handoff (A1b)
+
+> Maps calibration charm contract capabilities (CC-*) from `contracts/charm-contract.yaml` to test suite requirements.
+
+### Contract-to-Suite Mapping
+
+| Contract | Capability | Required By (migrate) | Required By (enhance) |
+|----------|------------|----------------------|----------------------|
+| **CC-01** | Event lifecycle logging | deploy_caas, smoke_k8s, smoke_k8s_psql, storage_k8s | actions, hooks, sidecar |
+| **CC-02** | Configuration (all types) | — | cli, appdata, model |
+| **CC-03** | Status reporting | — | smoke, deploy |
+| **CC-04** | Actions with params | deploy_caas, smoke_k8s, smoke_k8s_psql, storage_k8s | actions, machine |
+| **CC-05** | Peer relations | — | relations (peer test) |
+| **CC-06** | Provides/requires relations | deploy_caas, smoke_k8s_psql | cmr, relations, appdata |
+| **CC-07** | Cross-model relations | — | cmr |
+| **CC-08** | Scaling | — | deploy (add/remove-unit tests) |
+| **CC-09** | Secrets | — | secrets_iaas, secrets_k8s |
+| **CC-10** | Storage (filesystem) | smoke_k8s_psql, storage_k8s | storage |
+| **CC-11** | Upgrade/refresh | — | refresh |
+| **CC-12** | Action error handling | — | actions |
+| **CC-K1** | Pebble workload | deploy_caas, smoke_k8s, smoke_k8s_psql, storage_k8s | sidecar |
+| **CC-K2** | Pebble health checks | — | sidecar (pebble_checks) |
+| **CC-K3** | Pebble file/exec | — | sidecar (pebble_notices) |
+| **CC-K10** | Multiple storages | smoke_k8s_psql, storage_k8s | — |
+| **CC-K11** | Event deferral | — | hooks |
+| **CC-M1** | Systemd service | — | machine, agents |
+| **CC-M2** | SSH accessibility | — | authorized_keys |
+| **CC-M3** | Machine constraints | — | constraints |
+| **CC-M5** | Subordinate interface | — | network, hooks |
+
+### Minimum Viable Contract for Migration
+
+The 4 migrate suites require only these contracts to unblock migration:
+
+| Contract | Priority | Blocking |
+|----------|----------|----------|
+| CC-01 | **P0** | All 4 suites need event lifecycle |
+| CC-04 | **P0** | All 4 suites need action verification |
+| CC-06 | **P1** | deploy_caas + smoke_k8s_psql need relations |
+| CC-10 | **P1** | smoke_k8s_psql + storage_k8s need storage |
+| CC-K1 | **P0** | All 4 suites need Pebble workload |
+| CC-K10 | **P2** | smoke_k8s_psql + storage_k8s need multi-storage |
+
+**Total**: 6 of 41 contracts needed for migration. Norma-k8s must implement CC-01, CC-04, CC-06, CC-10, CC-K1, CC-K10 before any suite can migrate.
+
+### Handoff Documentation
+
+The charm contract (`specs/002-ci-test-suite/contracts/charm-contract.yaml`) is the **source of truth** for norma-k8s and norma charm requirements. When norma charm development begins:
+
+1. Feed the full contract YAML into the norma-k8s charm spec as external requirements
+2. Feed the `machine:` section into the norma (IaaS) charm spec
+3. Prioritize implementation of the P0 contracts (CC-01, CC-04, CC-K1) to unblock smoke_k8s migration first (simplest migration)
+4. Test each contract capability against the test suite that will consume it
+5. Report back contract compliance to update the `charms` section of each suite's `predicates.yaml`
+
+**External dependency**: Norma charm development is OUT OF SCOPE for this spec. This handoff establishes the interface contract. The CI test suite can proceed with all other work (predicate system, DAG, substrate verification, classification) while norma development happens in parallel.
