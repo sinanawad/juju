@@ -1,25 +1,5 @@
 # Quickstart: Working with the Predicate CI System
 
-## Prerequisites
-
-| Tool | Required Version | Check Command | Notes |
-|------|-----------------|---------------|-------|
-| `yq` | mikefarah/yq v4.x | `yq --version` (must show `mikefarah/yq`) | Used by predicate evaluator and DAG parser. **NOT** `kislyuk/yq` (Python). Pre-installed on GitHub Actions self-hosted runners. |
-| `jq` | 1.6+ | `jq --version` | Used by test assertions and evaluator output. Already in test dependencies. |
-| `shellcheck` | 0.8+ | `shellcheck --version` | Used by `static_analysis` suite. Already in test dependencies. |
-
-Install `mikefarah/yq` v4 locally (if not already present):
-
-```bash
-# Linux (amd64)
-sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
-sudo chmod +x /usr/local/bin/yq
-
-# Verify it is mikefarah/yq (NOT kislyuk/yq)
-yq --version
-# Expected: yq (https://github.com/mikefarah/yq/) version v4.x.x
-```
-
 ## Adding Predicates to an Existing Suite
 
 1. Create `tests/suites/<your-suite>/predicates.yaml`:

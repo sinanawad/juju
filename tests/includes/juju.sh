@@ -132,11 +132,7 @@ bootstrap() {
 	shift
 
 	rnd=$(rnd_str)
-	if [[ ${CI:-} == "true" && -n ${GITHUB_RUN_ID:-} ]]; then
-		name="ci-${GITHUB_RUN_ID}-${rnd}"
-	else
-		name="ctrl-${rnd}"
-	fi
+	name="ctrl-${rnd}"
 
 	if [[ ! -f "${TEST_DIR}/jujus" ]]; then
 		touch "${TEST_DIR}/jujus"
