@@ -146,6 +146,8 @@ func New(config Config) (*Worker, error) {
 ## Active Technologies
 - Go (per `go.mod`) + DQLite, Sqlair, client-go (K8s), tomb/catacomb (worker lifecycle) (001-k8s-deployment-types)
 - DQLite (new `deployment_type` lookup table + column on `application`) (001-k8s-deployment-types)
+- Bash (test framework, predicate evaluator), YAML (predicates, GitHub Actions), Go (per `go.mod` — Juju codebase under test) + GitHub Actions, `dorny/paths-filter@v3` (existing), `jq` (existing, used in test assertions), MicroK8s (K8s CI provider), LXD (IaaS CI provider) (002-ci-test-suite)
+- YAML files (`tests/suites/<name>/predicates.yaml`) — no database (002-ci-test-suite)
 
 ## Recent Changes
 - 001-k8s-deployment-types: Added Go (per `go.mod`) + DQLite, Sqlair, client-go (K8s), tomb/catacomb (worker lifecycle)

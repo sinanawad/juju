@@ -1,0 +1,240 @@
+# Calibration Charm Contract
+# ===========================
+# This contract defines what the CI test suite expects from calibration charms.
+# It must be fed into the norma-k8s and norma charm specs as external requirements.
+# Charm development is OUT OF SCOPE for the CI test suite spec.
+#
+# Source: specs/002-ci-test-suite/spec.md (Calibration Charm Requirements Contract)
+
+schema: "1.0"
+
+# Shared contract — both norma-k8s and norma must provide these
+shared:
+  - id: CC-01
+    capability: Event lifecycle logging
+    action: get-event-log
+    returns: Ordered event ledger (JSON array)
+    ci_purpose: Verify Juju dispatches correct events in correct order
+
+  - id: CC-02
+    capability: Configuration (all types)
+    action: get-config
+    config_options: [string, int, float, bool, secret]
+    ci_purpose: Test juju config, config-changed event, type coercion
+
+  - id: CC-03
+    capability: Status reporting
+    action: set-status
+    params: {status: "active|blocked|waiting|maintenance", message: string}
+    ci_purpose: Test juju status accuracy and status transitions
+
+  - id: CC-04
+    capability: Actions with params
+    action: run-check
+    params: {capability: string}
+    returns: Structured JSON {pass: bool, evidence: object}
+    ci_purpose: Per-capability validation from inside the charm
+
+  - id: CC-05
+    capability: Peer relations
+    endpoint: norma-peers (interface norma_peers)
+    action: get-peer-data
+    ci_purpose: Test leader election, peer data exchange, unit coordination
+
+  - id: CC-06
+    capability: Provides/requires relations
+    endpoints: [calibration-provider, calibration-requirer]
+    interface: calibration
+    ci_purpose: Test relation lifecycle, data exchange, self-relation
+
+  - id: CC-07
+    capability: Cross-model relations
+    requirement: Same endpoints (CC-06) work via juju offer/consume
+    ci_purpose: Test CMR offer, consume, data flow across models
+
+  - id: CC-08
+    capability: Scaling
+    action: get-cluster-info
+    returns: {unit_count: int, leader: string, peers: [string]}
+    ci_purpose: Test juju scale-application, add-unit, remove-unit
+
+  - id: CC-09
+    capability: Secrets
+    action: get-secret-info
+    lifecycle: [create, rotate, expire, share, remove]
+    ci_purpose: Test full secret lifecycle
+
+  - id: CC-10
+    capability: Storage (filesystem)
+    action: check-storage
+    returns: {attached: bool, marker_exists: bool, marker_data: object}
+    ci_purpose: Test storage attach, detach, persistence across restarts
+
+  - id: CC-11
+    capability: Upgrade/refresh
+    action: get-version
+    returns: {charm_version: string, workload_version: string}
+    ci_purpose: Test juju refresh, channel switching
+
+  - id: CC-12
+    capability: Action error handling
+    action: fail-action
+    params: {message: string}
+    ci_purpose: Test action failure reporting in juju run
+
+# K8s-specific contract — norma-k8s only
+k8s:
+  - id: CC-K1
+    capability: Pebble workload management
+    requirement: Service start/stop/restart via Pebble layers
+    ci_purpose: Test K8s workload lifecycle
+
+  - id: CC-K2
+    capability: Pebble health checks
+    action: toggle-health
+    requirement: HTTP, TCP, and exec checks
+    ci_purpose: Test pebble-check-failed/recovered events
+
+  - id: CC-K3
+    capability: Pebble file/exec ops
+    action: test-pebble-ops
+    returns: {files_tested: int, exec_tested: bool, all_passed: bool}
+    ci_purpose: Test container file operations
+
+  - id: CC-K4
+    capability: Pebble custom notices
+    action: trigger-notice
+    params: {key: string, data: string}
+    ci_purpose: Test async workload communication
+
+  - id: CC-K5
+    capability: Multiple containers
+    requirement: 2+ containers with independent lifecycle
+    ci_purpose: Test multi-container charms
+
+  - id: CC-K6
+    capability: OCI resources
+    requirement: Image resource refresh via juju attach-resource
+    ci_purpose: Test OCI resource lifecycle
+
+  - id: CC-K7
+    capability: Non-root execution
+    requirement: Runs as non-root UID in container
+    ci_purpose: Test security constraints
+
+  - id: CC-K8
+    capability: Port management
+    action: test-networking
+    returns: {open_ports: [object], bindings: object}
+    ci_purpose: Test K8s service/port exposure
+
+  - id: CC-K9
+    capability: COS observability
+    endpoints: [metrics-endpoint, grafana-dashboard, log-proxy]
+    interfaces: [prometheus_scrape, grafana_dashboard, loki_push_api]
+    ci_purpose: Test COS integration (integration tier only)
+
+  - id: CC-K10
+    capability: Multiple storages
+    requirement: 2+ named storage definitions (e.g., data + logs)
+    ci_purpose: Test multiple PVC management
+
+  - id: CC-K11
+    capability: Event deferral
+    action: test-defer
+    params: {arm: bool}
+    ci_purpose: Test event.defer() and re-emission
+
+# Machine-specific contract — norma (IaaS) only
+machine:
+  - id: CC-M1
+    capability: Systemd service management
+    requirement: Go binary managed as systemd unit
+    ci_purpose: Test machine workload lifecycle (no Pebble)
+
+  - id: CC-M2
+    capability: SSH accessibility
+    requirement: Charm reachable via juju ssh
+    ci_purpose: Test SSH access, authorized-keys
+
+  - id: CC-M3
+    capability: Machine constraints
+    requirement: Deploy with cores/mem/root-disk/virt-type and verify
+    ci_purpose: Test machine placement, constraint enforcement
+
+  - id: CC-M4
+    capability: LXD container placement
+    requirement: Deploy to lxd:N and report container status
+    ci_purpose: Test container placement on machines
+
+  - id: CC-M5
+    capability: Subordinate interface
+    requirement: Provides subordinate endpoint for injection testing
+    ci_purpose: Test subordinate deployment pattern
+
+  - id: CC-M6
+    capability: Spaces & network bindings
+    action: test-networking
+    returns: {bindings: object, network_get_results: object}
+    ci_purpose: Test network spaces, endpoint bindings
+
+  - id: CC-M7
+    capability: Block storage
+    action: check-storage
+    requirement: Block device verification via lsblk
+    ci_purpose: Test IaaS block storage (not just filesystem)
+
+  - id: CC-M8
+    capability: Base/series verification
+    requirement: Reports OS version via action
+    ci_purpose: Test --base ubuntu@22.04 enforcement
+
+  - id: CC-M9
+    capability: Agent tools verification
+    requirement: Reports jujud version and tools path
+    ci_purpose: Test agent upgrade path, tools distribution
+
+  - id: CC-M10
+    capability: Payload registration
+    requirement: Register payload, verify via juju list-payloads
+    ci_purpose: Test payload lifecycle tracking
+
+  - id: CC-M11
+    capability: Subordinate variant (norma-sub)
+    requirement: Separate subordinate charm for injection tests
+    ci_purpose: Test subordinate relation + principal interaction
+
+# Design principles for charm implementations
+design_principles:
+  - Same action names across charms for test script reuse
+  - All actions return structured JSON with consistent schema
+  - Self-diagnosing — charm bugs distinguishable from Juju bugs
+  - No external runtime dependencies (database, API, registry)
+  - Active/idle within 120 seconds of deploy
+
+# Substrate verification support
+substrate_verification:
+  - operation: juju deploy
+    k8s_check: "kubectl get pod -l app.kubernetes.io/name=<app>"
+    machine_check: "juju ssh <unit> systemctl is-active <service>"
+
+  - operation: juju scale-application -n N
+    k8s_check: "kubectl get pods count == N"
+    machine_check: "juju status --format=json machine count == N"
+
+  - operation: juju destroy-model
+    k8s_check: "kubectl get namespace <model> returns NotFound"
+    machine_check: "LXD containers / cloud instances terminated"
+
+  - operation: juju config app key=val
+    both_check: "charm action get-config returns new value"
+
+  - operation: juju relate a b
+    both_check: "charm action get-relation-data shows data"
+
+  - operation: juju remove-relation a b
+    both_check: "charm action get-relation-data shows empty/absent"
+
+  - operation: juju add-storage
+    k8s_check: "kubectl get pvc shows new PVC"
+    machine_check: "lsblk or df -h shows new mount"
