@@ -50,6 +50,7 @@ type EntityKind string
 const (
 	EntityKindUnit        EntityKind = "unit"
 	EntityKindApplication EntityKind = "application"
+	EntityKindModel       EntityKind = "model"
 )
 
 // Finding is the atomic output of the citizenship observatory. The

@@ -43,6 +43,8 @@ var detectors = []Detector{
 	detectBlockedNoMessage,
 	detectCharmRevisionAging,
 	detectUnitBlockedStale,
+	detectEntityStuckDying,
+	detectModelSuspendedCredential,
 }
 
 // statusHistoryAPI is the slice of Client used by stateful detectors
@@ -647,6 +649,144 @@ func oldestInWindow(history corestatus.History, cutoff time.Time) time.Time {
 		}
 	}
 	return oldest
+}
+
+// ----------------------------------------------------------------------
+// Signal 8: entity-stuck-dying
+// ----------------------------------------------------------------------
+
+const (
+	checkEntityStuckDying = "entity-stuck-dying"
+	// protocolEntityStuckDying cites the brief's §4c.1 Hook firing
+	// protocol: teardown completeness is part of the firing-protocol
+	// contract. An entity stuck in Dying signals a teardown hook that
+	// never returns success.
+	protocolEntityStuckDying        = "protocol://citizenship/4c.1#entity-stuck-dying"
+	summaryEntityStuckDyingWarning  = "Entity has been in Dying state for over 5 minutes."
+	summaryEntityStuckDyingCritical = "Entity has been in Dying state for over 1 hour."
+	recommendEntityStuckDyingDefault = "An entity that lingers in Dying typically signals a failing teardown hook (relation-departed/relation-broken/stop). Inspect the unit's debug-log and recent agent-status history. Avoid 'juju resolve --force' on the broken hook -- it can leave substrate resources orphaned. Fix the teardown path in charm code, then 'juju resolve' to retry."
+
+	entityDyingWarningThreshold  = 5 * time.Minute
+	entityDyingCriticalThreshold = 1 * time.Hour
+)
+
+// detectEntityStuckDying emits a finding per application or unit whose
+// Life is "dying" and whose transition timestamp is older than the
+// warning threshold. Severity is warning for ages in (5m, 1h] and
+// critical for ages beyond 1h. Owner is mixed -- the underlying defect
+// is usually a charm teardown bug, but operators must intervene via
+// 'juju resolve' or '--force' to actually unstick the entity. nil or
+// future-dated transition timestamps yield zero findings.
+//
+// Application transition timestamp is taken from app.Status.Since.
+// Unit transition timestamp prefers WorkloadStatus.Since and falls back
+// to AgentStatus.Since when the former is nil. The Since field on the
+// resulting Finding records the transition time so the AGE column
+// populates correctly.
+func detectEntityStuckDying(status *params.FullStatus, now time.Time) []Finding {
+	if status == nil || status.Applications == nil {
+		return nil
+	}
+	var out []Finding
+	for appName, app := range status.Applications {
+		if string(app.Life) == "dying" {
+			if f, ok := dyingFinding(appName, EntityKindApplication, app.Status.Since, now); ok {
+				out = append(out, f)
+			}
+		}
+		if app.Units == nil {
+			continue
+		}
+		for unitName, u := range app.Units {
+			if string(u.WorkloadStatus.Life) != "dying" {
+				continue
+			}
+			since := u.WorkloadStatus.Since
+			if since == nil {
+				since = u.AgentStatus.Since
+			}
+			if f, ok := dyingFinding(unitName, EntityKindUnit, since, now); ok {
+				out = append(out, f)
+			}
+		}
+	}
+	return out
+}
+
+// dyingFinding builds the warning/critical Finding for a Dying entity,
+// or returns ok=false when the transition timestamp is nil, future, or
+// not yet old enough to flag.
+func dyingFinding(entity string, kind EntityKind, since *time.Time, now time.Time) (Finding, bool) {
+	if since == nil {
+		return Finding{}, false
+	}
+	age := now.Sub(*since)
+	if age <= entityDyingWarningThreshold {
+		return Finding{}, false
+	}
+	severity := SeverityWarning
+	summary := summaryEntityStuckDyingWarning
+	if age > entityDyingCriticalThreshold {
+		severity = SeverityCritical
+		summary = summaryEntityStuckDyingCritical
+	}
+	return newFinding(
+		checkEntityStuckDying,
+		severity,
+		entity,
+		kind,
+		OwnerMixed,
+		summary,
+		recommendEntityStuckDyingDefault,
+		protocolEntityStuckDying,
+	).withSince(*since), true
+}
+
+// ----------------------------------------------------------------------
+// Signal 9: model-suspended-credential
+// ----------------------------------------------------------------------
+
+const (
+	checkModelSuspendedCredential = "model-suspended-credential"
+	// protocolModelSuspendedCredential cites the brief's §4b operational
+	// hygiene inventory: a suspended model represents a model-wide
+	// outage that silently halts all workload commands.
+	protocolModelSuspendedCredential         = "protocol://citizenship/4b#model-suspended-credential"
+	summaryModelSuspendedCredential          = "Model is suspended -- cloud credential validation failed."
+	recommendModelSuspendedCredentialDefault = "All workload commands will hang indefinitely until the cloud credential is restored. Rotate the credential and re-attach: 'juju add-credential', 'juju update-credential', or contact the cloud admin if a service principal expired. The --force flag does NOT bypass model suspension."
+)
+
+// detectModelSuspendedCredential emits at most one critical finding
+// when the model's ModelStatus.Status is "suspended" -- almost always
+// because cloud credential validation failed. Owner is operator
+// (credential rotation is operator-side). EntityKind is "model" and
+// the entity name is the model name from status.Model.Name; if empty
+// for any reason, "<model>" is used defensively.
+func detectModelSuspendedCredential(status *params.FullStatus, _ time.Time) []Finding {
+	if status == nil {
+		return nil
+	}
+	if status.Model.ModelStatus.Status != "suspended" {
+		return nil
+	}
+	entity := status.Model.Name
+	if entity == "" {
+		entity = "<model>"
+	}
+	f := newFinding(
+		checkModelSuspendedCredential,
+		SeverityCritical,
+		entity,
+		EntityKindModel,
+		OwnerOperator,
+		summaryModelSuspendedCredential,
+		recommendModelSuspendedCredentialDefault,
+		protocolModelSuspendedCredential,
+	)
+	if since := status.Model.ModelStatus.Since; since != nil {
+		f = f.withSince(*since)
+	}
+	return []Finding{f}
 }
 
 // continuousRunStart returns the Since timestamp of the OLDEST entry

@@ -12,6 +12,7 @@ import (
 	"github.com/juju/tc"
 
 	"github.com/juju/juju/cmd/juju/citizen"
+	"github.com/juju/juju/core/life"
 	corestatus "github.com/juju/juju/core/status"
 	"github.com/juju/juju/rpc/params"
 )
@@ -485,4 +486,162 @@ func (s *detectorsSuite) TestHookErrorIgnoresNonError(c *tc.C) {
 	findings, err := citizen.RunStatefulDetectors(context.Background(), api, st, referenceTime)
 	c.Assert(err, tc.ErrorIsNil)
 	c.Check(findings, tc.HasLen, 0)
+}
+
+// ------------------------------------------------------------------
+// Signal 8: entity-stuck-dying
+// ------------------------------------------------------------------
+
+func (s *detectorsSuite) TestEntityStuckDyingWarningThreshold(c *tc.C) {
+	// Unit Life=dying, transitioned 6 minutes ago -> warning finding.
+	since := referenceTime.Add(-6 * time.Minute)
+	st := statusWithDyingUnit("a", "a/0", &since)
+	findings := citizen.RunDetectors(st, referenceTime)
+	c.Assert(findings, tc.HasLen, 1)
+	f := findings[0]
+	c.Check(f.CheckID, tc.Equals, "entity-stuck-dying")
+	c.Check(f.Severity, tc.Equals, citizen.SeverityWarning)
+	c.Check(f.Owner, tc.Equals, citizen.OwnerMixed)
+	c.Check(f.EntityKind, tc.Equals, citizen.EntityKindUnit)
+	c.Check(f.Entity, tc.Equals, "a/0")
+	c.Assert(f.Since, tc.NotNil)
+	c.Check(f.Since.Equal(since), tc.IsTrue)
+}
+
+func (s *detectorsSuite) TestEntityStuckDyingCriticalThreshold(c *tc.C) {
+	// Unit Life=dying, transitioned 90 minutes ago -> critical finding.
+	since := referenceTime.Add(-90 * time.Minute)
+	st := statusWithDyingUnit("a", "a/0", &since)
+	findings := citizen.RunDetectors(st, referenceTime)
+	c.Assert(findings, tc.HasLen, 1)
+	c.Check(findings[0].Severity, tc.Equals, citizen.SeverityCritical)
+	c.Check(findings[0].CheckID, tc.Equals, "entity-stuck-dying")
+}
+
+func (s *detectorsSuite) TestEntityStuckDyingApplicationLevel(c *tc.C) {
+	// Application Life=dying for 10 min -> warning, EntityKindApplication.
+	since := referenceTime.Add(-10 * time.Minute)
+	st := &params.FullStatus{
+		Applications: map[string]params.ApplicationStatus{
+			"a": {
+				Life: life.Dying,
+				Status: params.DetailedStatus{
+					Status: "active",
+					Since:  &since,
+				},
+			},
+		},
+	}
+	findings := citizen.RunDetectors(st, referenceTime)
+	c.Assert(findings, tc.HasLen, 1)
+	f := findings[0]
+	c.Check(f.CheckID, tc.Equals, "entity-stuck-dying")
+	c.Check(f.EntityKind, tc.Equals, citizen.EntityKindApplication)
+	c.Check(f.Entity, tc.Equals, "a")
+	c.Check(f.Severity, tc.Equals, citizen.SeverityWarning)
+}
+
+func (s *detectorsSuite) TestEntityStuckDyingNotDyingNoFinding(c *tc.C) {
+	// App/unit Life=alive -> zero findings even with old Since.
+	since := referenceTime.Add(-90 * time.Minute)
+	st := &params.FullStatus{
+		Applications: map[string]params.ApplicationStatus{
+			"a": {
+				Life: life.Alive,
+				Status: params.DetailedStatus{
+					Status: "active",
+					Since:  &since,
+				},
+				Units: map[string]params.UnitStatus{
+					"a/0": {
+						WorkloadStatus: params.DetailedStatus{
+							Status: "active",
+							Life:   life.Alive,
+							Since:  &since,
+						},
+					},
+				},
+			},
+		},
+	}
+	findings := citizen.RunDetectors(st, referenceTime)
+	c.Check(findings, tc.HasLen, 0)
+}
+
+func (s *detectorsSuite) TestEntityStuckDyingNilSinceNoFinding(c *tc.C) {
+	// Unit Life=dying but Since==nil on both workload AND agent ->
+	// defensive zero findings rather than a panic.
+	st := statusWithDyingUnit("a", "a/0", nil)
+	findings := citizen.RunDetectors(st, referenceTime)
+	c.Check(findings, tc.HasLen, 0)
+}
+
+// ------------------------------------------------------------------
+// Signal 9: model-suspended-credential
+// ------------------------------------------------------------------
+
+func (s *detectorsSuite) TestModelSuspendedCredentialFires(c *tc.C) {
+	since := referenceTime.Add(-1 * time.Hour)
+	st := statusWithSuspendedModel("prod", &since)
+	findings := citizen.RunDetectors(st, referenceTime)
+	c.Assert(findings, tc.HasLen, 1)
+	f := findings[0]
+	c.Check(f.CheckID, tc.Equals, "model-suspended-credential")
+	c.Check(f.Severity, tc.Equals, citizen.SeverityCritical)
+	c.Check(f.Owner, tc.Equals, citizen.OwnerOperator)
+	c.Check(f.EntityKind, tc.Equals, citizen.EntityKindModel)
+	c.Check(f.Entity, tc.Equals, "prod")
+	c.Assert(f.Since, tc.NotNil)
+	c.Check(f.Since.Equal(since), tc.IsTrue)
+}
+
+func (s *detectorsSuite) TestModelSuspendedCredentialNotSuspendedNoFinding(c *tc.C) {
+	st := &params.FullStatus{
+		Model: params.ModelStatusInfo{
+			Name: "prod",
+			ModelStatus: params.DetailedStatus{
+				Status: "available",
+			},
+		},
+		Applications: map[string]params.ApplicationStatus{},
+	}
+	findings := citizen.RunDetectors(st, referenceTime)
+	c.Check(findings, tc.HasLen, 0)
+}
+
+// statusWithDyingUnit returns a status containing a single unit in
+// Life=dying state with the given WorkloadStatus.Since.
+func statusWithDyingUnit(app, unit string, since *time.Time) *params.FullStatus {
+	return &params.FullStatus{
+		Applications: map[string]params.ApplicationStatus{
+			app: {
+				Life: life.Alive,
+				Units: map[string]params.UnitStatus{
+					unit: {
+						WorkloadStatus: params.DetailedStatus{
+							Status: "active",
+							Life:   life.Dying,
+							Since:  since,
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+// statusWithSuspendedModel returns a status whose Model.ModelStatus is
+// "suspended" with the given Since timestamp.
+func statusWithSuspendedModel(modelName string, since *time.Time) *params.FullStatus {
+	return &params.FullStatus{
+		Model: params.ModelStatusInfo{
+			Name: modelName,
+			ModelStatus: params.DetailedStatus{
+				Status: "suspended",
+				Info:   "cloud credential invalid",
+				Since:  since,
+			},
+		},
+		Applications: map[string]params.ApplicationStatus{},
+	}
 }
