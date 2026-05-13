@@ -67,20 +67,26 @@ func (s *formatterSuite) TestHybridEmpty(c *tc.C) {
 }
 
 func (s *formatterSuite) TestHybridGolden(c *tc.C) {
+	// Disable color so the assertion pins the structural format only.
+	// The snazzy variant (ANSI bold/dim + colored severity tag +
+	// Unicode arrow) is exercised separately by the live demo.
+	restore := citizen.SetTableFormatTestOverrides(time.Now, false, "")
+	defer restore()
+
 	var buf bytes.Buffer
 	err := citizen.FormatHybrid(&buf, sampleFindings())
 	c.Assert(err, tc.ErrorIsNil)
 	expected := "" +
-		"CRITICAL postgresql/0 [unit-blocked-stale]\n" +
+		"● CRITICAL postgresql/0 [unit-blocked-stale]\n" +
 		"   -> Unit has been blocked for 9 days.\n" +
 		"   -> Investigate blocking condition: charm hook message, peer state,\n" +
 		"   -> or operator intervention required.\n" +
 		"\n" +
-		"WARNING  nginx-ingress [charm-revision-aging]\n" +
+		"▲ WARNING  nginx-ingress [charm-revision-aging]\n" +
 		"   -> Application is behind its tracked channel.\n" +
 		"   -> Run 'juju refresh nginx-ingress' to pick up newer revision.\n" +
 		"\n" +
-		"INFO     postgresql/0 [active-with-message]\n" +
+		"◆ INFO     postgresql/0 [active-with-message]\n" +
 		"   -> Unit reports 'active' with a non-empty status message.\n" +
 		"   -> Convention is that 'active' carries no message; the empty string\n" +
 		"   -> is the visual signal of normal operation.\n"
@@ -339,28 +345,7 @@ func tableEmptyExpected() string {
 	return topBorder + line1 + line2 + bottomBorder
 }
 
-func (s *formatterSuite) TestHybridSeverityPadding(c *tc.C) {
-	// Quick sanity check: all three severity tags should be 8 chars
-	// wide so the entity columns line up.
-	for _, sev := range []citizen.Severity{
-		citizen.SeverityInfo, citizen.SeverityWarning, citizen.SeverityCritical,
-	} {
-		f := []citizen.Finding{{
-			CheckID:        "x",
-			Severity:       sev,
-			Entity:         "e",
-			EntityKind:     citizen.EntityKindUnit,
-			Owner:          citizen.OwnerCharmAuthor,
-			Summary:        "s",
-			Recommendation: "r",
-			ProtocolRef:    "p",
-		}}
-		var buf bytes.Buffer
-		err := citizen.FormatHybrid(&buf, f)
-		c.Assert(err, tc.ErrorIsNil)
-		// First 8 chars are the padded severity tag; char 9 is a space.
-		got := buf.String()
-		c.Check(got[8:9], tc.Equals, " ",
-			tc.Commentf("severity %q did not pad to 8 chars: %q", sev, got[:9]))
-	}
-}
+// TestHybridSeverityPadding deleted: the byte-position alignment
+// check no longer holds now that the verbose format leads with a
+// multi-byte Unicode glyph. The byte-locked TestHybridGolden above
+// supersedes it.

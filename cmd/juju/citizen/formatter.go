@@ -44,20 +44,57 @@ func formatHybrid(writer io.Writer, value any) error {
 
 // writeFinding emits one finding in hybrid format.
 func writeFinding(writer io.Writer, f Finding) error {
-	// Severity padded to 8 chars right-aligned with spaces (CRITICAL
-	// is already 8 chars; INFO is 4 -> pad to 8; WARNING is 7 -> pad
-	// to 8).
-	severityTag := fmt.Sprintf("%-8s", strings.ToUpper(string(f.Severity)))
-	if _, err := fmt.Fprintf(writer, "%s %s [%s]\n", severityTag, f.Entity, f.CheckID); err != nil {
+	// Severity header: glyph + uppercase tag, padded so the entity
+	// column aligns across findings of different severities. Visible
+	// widths: "● CRITICAL" 10, "▲ WARNING " 10 (with trailing space),
+	// "◆ INFO    " 10 (with 4 trailing spaces). Color when enabled.
+	glyph, ansi := verboseSeverityStyle(f.Severity)
+	tag := strings.ToUpper(string(f.Severity))
+	header := fmt.Sprintf("%s %-8s", glyph, tag)
+	if colorEnabled && ansi != "" {
+		header = ansi + header + ansiReset
+	}
+
+	entity := f.Entity
+	checkID := "[" + f.CheckID + "]"
+	if colorEnabled {
+		entity = ansiBold + entity + ansiBoldOff
+		checkID = ansiDim + checkID + ansiDimOff
+	}
+
+	if _, err := fmt.Fprintf(writer, "%s %s %s\n", header, entity, checkID); err != nil {
 		return err
+	}
+
+	// Note arrows: Unicode right-arrow → in dim. Falls back to ASCII
+	// "->" when color is disabled to keep the byte-locked plain form
+	// stable for diff-driven consumers.
+	arrowPrefix := "   -> "
+	if colorEnabled {
+		arrowPrefix = "   " + ansiDim + "→" + ansiDimOff + " "
 	}
 	notes := noteLines(f)
 	for _, n := range notes {
-		if _, err := fmt.Fprintf(writer, "   -> %s\n", n); err != nil {
+		if _, err := fmt.Fprintf(writer, "%s%s\n", arrowPrefix, n); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// verboseSeverityStyle returns the glyph + ANSI color for a severity,
+// or ("", "") for unknown values. Glyph identity matches the table
+// formatter so the two views share a visual language.
+func verboseSeverityStyle(s Severity) (string, string) {
+	switch s {
+	case SeverityCritical:
+		return glyphCritical, ansiRed
+	case SeverityWarning:
+		return glyphWarning, ansiYellow
+	case SeverityInfo:
+		return glyphInfo, ansiCyan
+	}
+	return "", ""
 }
 
 // noteLines returns the 1-3 note lines for a finding's hybrid render:
