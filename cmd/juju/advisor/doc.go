@@ -1,9 +1,9 @@
 // Copyright 2026 Canonical Ltd.
 // Licensed under the AGPLv3, see LICENCE file for details.
 
-// Package citizen implements the `juju citizen` operator CLI command.
+// Package advisor implements the `juju advisor` operator CLI command.
 //
-// The citizen command surfaces deployment-level citizenship findings:
+// The advisor command surfaces deployment-level findings:
 // degradations caused by external factors (charms, infrastructure) that
 // are invisible to `juju status`. A Finding is a structured record with
 // a stable schema (severity, owner, entity, summary, recommendation,
@@ -27,4 +27,4 @@
 // Enrichment is a post-detection transform on the Finding's
 // `recommendation` field; the layer is optional and bypassed by
 // `--no-ai`. The CLI does not care whether enrichment ran.
-package citizen
+package advisor

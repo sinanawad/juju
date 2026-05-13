@@ -1,7 +1,7 @@
 // Copyright 2026 Canonical Ltd.
 // Licensed under the AGPLv3, see LICENCE file for details.
 
-package citizen_test
+package advisor_test
 
 import (
 	"context"
@@ -17,7 +17,7 @@ import (
 	"github.com/juju/juju/api/jujuclient/jujuclienttesting"
 	"github.com/juju/juju/cmd/cmd"
 	"github.com/juju/juju/cmd/cmd/cmdtesting"
-	"github.com/juju/juju/cmd/juju/citizen"
+	"github.com/juju/juju/cmd/juju/advisor"
 	corestatus "github.com/juju/juju/core/status"
 	"github.com/juju/juju/internal/testing"
 	"github.com/juju/juju/rpc/params"
@@ -66,13 +66,13 @@ var commandRefTime = time.Date(2026, 5, 13, 12, 0, 0, 0, time.UTC)
 func (s *commandSuite) newCommand(api *fakeStatusAPI) cmd.Command {
 	store := jujuclienttesting.MinimalStore()
 	ck := testclock.NewClock(commandRefTime)
-	return citizen.NewCitizenCommandForTest(store, api, nil, ck)
+	return advisor.NewAdvisorCommandForTest(store, api, nil, ck)
 }
 
 func (s *commandSuite) newCommandWithErr(apiErr error) cmd.Command {
 	store := jujuclienttesting.MinimalStore()
 	ck := testclock.NewClock(commandRefTime)
-	return citizen.NewCitizenCommandForTest(store, &fakeStatusAPI{err: apiErr}, nil, ck)
+	return advisor.NewAdvisorCommandForTest(store, &fakeStatusAPI{err: apiErr}, nil, ck)
 }
 
 // ------------------------------------------------------------------
@@ -82,7 +82,7 @@ func (s *commandSuite) newCommandWithErr(apiErr error) cmd.Command {
 func (s *commandSuite) TestInfo(c *tc.C) {
 	cmd := s.newCommand(&fakeStatusAPI{status: &params.FullStatus{}})
 	info := cmd.Info()
-	c.Check(info.Name, tc.Equals, "citizen")
+	c.Check(info.Name, tc.Equals, "advisor")
 	c.Check(info.Purpose, tc.Not(tc.Equals), "")
 }
 
@@ -97,13 +97,13 @@ func (s *commandSuite) TestInitRejectsPositionalArgs(c *tc.C) {
 // ------------------------------------------------------------------
 
 func (s *commandSuite) TestEmptyModelVerbosePrintsLiteralAndEmptyStderr(c *tc.C) {
-	// FR-011's "No citizenship findings." literal is preserved in the
+	// FR-011's "No findings." literal is preserved in the
 	// verbose (formerly hybrid) format. The new default table format
 	// emits a dashboard panel instead for empty state.
 	cmd := s.newCommand(&fakeStatusAPI{status: &params.FullStatus{}})
 	ctx, err := cmdtesting.RunCommand(c, cmd, "--format", "verbose")
 	c.Assert(err, tc.ErrorIsNil)
-	c.Check(cmdtesting.Stdout(ctx), tc.Equals, "No citizenship findings.\n")
+	c.Check(cmdtesting.Stdout(ctx), tc.Equals, "No findings.\n")
 	c.Check(cmdtesting.Stderr(ctx), tc.Equals, "")
 }
 
@@ -266,4 +266,3 @@ func indexOf(haystack, needle string) int {
 	}
 	return -1
 }
-

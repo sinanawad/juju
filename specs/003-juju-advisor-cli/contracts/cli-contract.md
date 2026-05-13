@@ -1,4 +1,4 @@
-# CLI Contract: `juju citizen`
+# CLI Contract: `juju advisor`
 
 This document fixes the user-facing contract of the command before any
 code is written. Locking the contract here is what enables the M1
@@ -8,7 +8,7 @@ implementation.
 ## Synopsis
 
 ```text
-juju citizen [-m <model>] [-o yaml|json|hybrid] [--format=<fmt>] \
+juju advisor [-m <model>] [-o yaml|json|hybrid] [--format=<fmt>] \
              [--severity=<csv>] [--no-ai]
 ```
 
@@ -41,7 +41,7 @@ inspection (spec FR-018).
 ## Streams
 
 - **stdout**: machine-consumable findings output (the chosen format) or
-  the literal `No citizenship findings.\n` when zero findings remain
+  the literal `No findings.\n` when zero findings remain
   after filtering, AND the format is `hybrid`.
 - **stderr**: warnings and errors only (e.g. fixture file missing, AI
   enrichment skipped). Never findings.
@@ -117,7 +117,7 @@ mapping follows the struct declaration:
   recommendation: |
     Investigate blocking condition: charm hook message, peer state,
     or operator intervention required.
-  protocol_ref: protocol://citizenship/4c#status/blocked-bounded
+  protocol_ref: protocol://advisor/4c#status/blocked-bounded
 - check_id: charm-revision-aging
   severity: warning
   ...
@@ -141,7 +141,7 @@ than what `cmd.FormatJson` provides):
     "owner": "mixed",
     "summary": "Unit has been blocked for 9 days.",
     "recommendation": "Investigate blocking condition...",
-    "protocol_ref": "protocol://citizenship/4c#status/blocked-bounded"
+    "protocol_ref": "protocol://advisor/4c#status/blocked-bounded"
   }
 ]
 ```

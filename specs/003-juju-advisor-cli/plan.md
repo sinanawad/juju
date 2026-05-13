@@ -1,12 +1,12 @@
-# Implementation Plan: `juju citizen` operator CLI command
+# Implementation Plan: `juju advisor` operator CLI command
 
-**Branch**: `003-juju-citizen-cli` | **Date**: 2026-05-13 | **Spec**: [spec.md](spec.md)
+**Branch**: `003-juju-advisor-cli` | **Date**: 2026-05-13 | **Spec**: [spec.md](spec.md)
 
-**Input**: Feature specification from `specs/003-juju-citizen-cli/spec.md`
+**Input**: Feature specification from `specs/003-juju-advisor-cli/spec.md`
 
 ## Summary
 
-Add a new client-side CLI subcommand `juju citizen` that fetches the
+Add a new client-side CLI subcommand `juju advisor` that fetches the
 current model status via the existing `Client.Status` facade, runs three
 local detector predicates against the response, optionally enriches each
 finding's recommendation from a bundled JSON fixture, and renders the
@@ -14,7 +14,7 @@ result in one of three formats (default hybrid, YAML, JSON). No new
 server-side facade. No persistence. Output shape and detection layer
 follow the constitution: structured Findings with six load-bearing
 fields, three-level severity, four-value owner enum, and a citation to
-the citizenship contract clause violated.
+the advisor protocol clause violated.
 
 The plan is **iteration-first**: M0-M6 milestones each end with a
 runnable, demoable artifact. M0+M1+M2 alone is a sufficient
@@ -49,13 +49,13 @@ competition-window MVP; M3-M6 are additive.
   fixtures.
 - Format-layer tests are golden-style: build a known `[]Finding`, render
   each format, diff against checked-in expected output.
-- Optional bash integration test under `tests/suites/citizen/`
+- Optional bash integration test under `tests/suites/advisor/`
   (post-M6).
 
 **Target Platform**: Linux/macOS (any platform juju builds on). The
 binary ships inside the existing `juju` client.
 
-**Project Type**: New subpackage `cmd/juju/citizen/` under the existing
+**Project Type**: New subpackage `cmd/juju/advisor/` under the existing
 client CLI. Registered in `cmd/juju/commands/main.go` alongside `block`,
 `status`, etc.
 
@@ -98,7 +98,7 @@ Reference: `.specify/memory/constitution.md` (v1.0.0).
   detector hardcodes its `owner` value at the point of finding
   construction. The CLI/renderer never decides ownership.
 - **Gate V -- Contract clause citation**: CONDITIONAL PASS. Detectors
-  cite clause anchors from `citizenship-observatory-brief.md` §4c. The
+  cite clause anchors from `advisor-brief.md` §4c. The
   exact clause IDs are recorded in `data-model.md`. If the brief's §4c
   uses a different anchor convention, the planner records the
   divergence under Complexity Tracking and updates the brief in the
@@ -135,7 +135,7 @@ Reference: `.specify/memory/constitution.md` (v1.0.0).
 ### Documentation (this feature)
 
 ```text
-specs/003-juju-citizen-cli/
+specs/003-juju-advisor-cli/
 ├── plan.md              # This file
 ├── research.md          # Phase 0 output (this command)
 ├── data-model.md        # Phase 1 output (this command)
@@ -150,8 +150,8 @@ specs/003-juju-citizen-cli/
 ### Source Code (repository root)
 
 ```text
-cmd/juju/citizen/
-├── command.go             # NewCitizenCommand, Init, Run, SetFlags, Info
+cmd/juju/advisor/
+├── command.go             # NewAdvisorCommand, Init, Run, SetFlags, Info
 ├── doc.go                 # Package doc (per AGENTS.doc-dot-go-rules)
 ├── detectors.go           # Pure-function detectors + DetectorRegistry
 ├── finding.go             # Finding type + Severity/Owner/EntityKind enums
@@ -168,7 +168,7 @@ cmd/juju/citizen/
 cmd/juju/commands/main.go  # MODIFIED: one line to register the command
 ```
 
-**Structure Decision**: A self-contained subpackage `cmd/juju/citizen/`
+**Structure Decision**: A self-contained subpackage `cmd/juju/advisor/`
 mirroring `cmd/juju/block/`. Detection lives in `detectors.go` as pure
 functions (`func detectActiveWithMessage(*params.FullStatus) []Finding`),
 deliberately decoupled from the command struct so future migration to a
@@ -177,41 +177,41 @@ refactor.
 
 ## Iteration Plan (the user-facing roadmap)
 
-Each milestone ends with a working `juju citizen` binary that
+Each milestone ends with a working `juju advisor` binary that
 demonstrates exactly one capability the previous milestone lacked.
 Each milestone targets ≤ 3 files changed (preferred: 2) and ≤ 30
 minutes of focused work. Drop-out points: M2, M4.
 
 ### M0 -- Scaffold (target: 20 min, drop-out: NO)
 
-**Deliverable**: `juju citizen` runs against any model, prints
-`No citizenship findings.` and exits 0. `juju help citizen` prints
+**Deliverable**: `juju advisor` runs against any model, prints
+`No findings.` and exits 0. `juju help advisor` prints
 purpose + flags.
 
 **Files touched**:
-1. `cmd/juju/citizen/command.go` — minimal `citizenCommand` struct,
+1. `cmd/juju/advisor/command.go` — minimal `advisorCommand` struct,
    Info/Init/Run/SetFlags. Run() prints the no-findings literal.
-2. `cmd/juju/citizen/doc.go` — package doc per Juju doc.go rules.
-3. `cmd/juju/commands/main.go` — `r.Register(citizen.NewCitizenCommand())`
+2. `cmd/juju/advisor/doc.go` — package doc per Juju doc.go rules.
+3. `cmd/juju/commands/main.go` — `r.Register(advisor.NewAdvisorCommand())`
    inserted alphabetically near `block.NewListCommand()`.
 
-**Test**: `command_test.go` — assert Info().Name == "citizen", Run()
+**Test**: `command_test.go` — assert Info().Name == "advisor", Run()
 prints the literal, exit code 0.
 
-**Demo line**: `~/go/bin/juju citizen` against a fresh microk8s model.
+**Demo line**: `~/go/bin/juju advisor` against a fresh microk8s model.
 
 ### M1 -- Lock the output shape (target: 30 min, drop-out: NO)
 
-**Deliverable**: `juju citizen` (no flags) returns one hardcoded
+**Deliverable**: `juju advisor` (no flags) returns one hardcoded
 synthetic finding in hybrid format. `-o yaml` and `-o json` work.
 
 **Files touched**:
-1. `cmd/juju/citizen/finding.go` — `Finding` struct, three enums,
+1. `cmd/juju/advisor/finding.go` — `Finding` struct, three enums,
    `serializableFinding` shadow (the YAML/JSON view), `toSerializable()`.
-2. `cmd/juju/citizen/formatter.go` — `formatHybrid(io.Writer, []Finding)`;
+2. `cmd/juju/advisor/formatter.go` — `formatHybrid(io.Writer, []Finding)`;
    wire `c.out.AddFlags(f, "hybrid", map[string]cmd.Formatter{"hybrid":
    formatHybrid, "yaml": cmd.FormatYaml, "json": cmd.FormatJson})`.
-3. `cmd/juju/citizen/command.go` — Run() returns a hardcoded
+3. `cmd/juju/advisor/command.go` — Run() returns a hardcoded
    `[]Finding{synthetic}`.
 
 **Test**: `formatter_test.go` — golden outputs for hybrid/yaml/json
@@ -223,19 +223,19 @@ eat the clock. The hybrid format is fixed in `contracts/cli-contract.md`
 before M1 begins — see that file. Do NOT iterate on visual design
 during M1.
 
-**Demo line**: `~/go/bin/juju citizen -o json | jq .`
+**Demo line**: `~/go/bin/juju advisor -o json | jq .`
 
 ### M2 -- First real detector: active-with-message (target: 30 min, drop-out: YES)
 
-**Deliverable**: `juju citizen` actually walks the model. For any unit
+**Deliverable**: `juju advisor` actually walks the model. For any unit
 in `active` state with a non-empty workload message, an info-severity
 finding is emitted. Otherwise the no-findings message is printed.
 
 **Files touched**:
-1. `cmd/juju/citizen/detectors.go` — `detectActiveWithMessage(
+1. `cmd/juju/advisor/detectors.go` — `detectActiveWithMessage(
    status *params.FullStatus) []Finding`. Hand-written summary +
    recommendation + protocol_ref baked into the detector constants.
-2. `cmd/juju/citizen/command.go` — `getStatusAPI()` interface +
+2. `cmd/juju/advisor/command.go` — `getStatusAPI()` interface +
    `NewAPIRoot(ctx)` wiring, mirroring `block/list.go` lines 110-117.
    Run() calls Status, dispatches to detectors, renders.
 
@@ -244,10 +244,10 @@ fixtures (clean, one match, three matches) directly into
 `detectActiveWithMessage`; assert finding count and field values.
 
 **Drop-out point**: If the competition window closes here, this is a
-complete, defensible demo of the "Juju citizenship" concept.
+complete, defensible demo of the "Juju compliance" concept.
 
 **Demo line**: Deploy a charm whose unit reports `active` with a
-non-trivial message (most COS charms do). Run `juju citizen`.
+non-trivial message (most COS charms do). Run `juju advisor`.
 
 ### M3 -- Second detector: charm-revision-aging (target: 20 min, drop-out: YES)
 
@@ -255,13 +255,13 @@ non-trivial message (most COS charms do). Run `juju citizen`.
 is non-empty produces a warning-severity finding.
 
 **Files touched**:
-1. `cmd/juju/citizen/detectors.go` — `detectCharmRevisionAging`.
-2. `cmd/juju/citizen/command.go` — append to detector dispatch chain.
+1. `cmd/juju/advisor/detectors.go` — `detectCharmRevisionAging`.
+2. `cmd/juju/advisor/command.go` — append to detector dispatch chain.
 
 **Test**: `detectors_test.go` — one new test function.
 
 **Demo line**: `juju refresh --revision N-1` an app, then
-`juju citizen`.
+`juju advisor`.
 
 ### M4 -- Third detector: unit-blocked-stale (target: 30 min, drop-out: YES)
 
@@ -269,18 +269,18 @@ is non-empty produces a warning-severity finding.
 >7d emits a critical. Uses injected clock.
 
 **Files touched**:
-1. `cmd/juju/citizen/detectors.go` — `detectUnitBlockedStale(
+1. `cmd/juju/advisor/detectors.go` — `detectUnitBlockedStale(
    *params.FullStatus, clock.Clock) []Finding`. Severity by duration.
-2. `cmd/juju/citizen/command.go` — clock field on the command struct
+2. `cmd/juju/advisor/command.go` — clock field on the command struct
    (defaults to `clock.WallClock`); plumb to detector.
-3. `cmd/juju/citizen/export_test.go` — expose a setter for the clock
+3. `cmd/juju/advisor/export_test.go` — expose a setter for the clock
    in tests.
 
 **Test**: `detectors_test.go` — boundary cases at 24h-1s, 24h+1s,
 7d-1s, 7d+1s. Uses `clock.NewClock(fixedTime)`.
 
 **Demo line**: Set a charm to error+resolve into blocked, wait (or
-fake the since), `juju citizen`.
+fake the since), `juju advisor`.
 
 ### M5 -- AI enrichment + severity filter + --no-ai (target: 40 min, drop-out: YES)
 
@@ -289,11 +289,11 @@ recommendation rewrite all work. The hybrid output's note lines come
 from the AI-enriched recommendation by default.
 
 **Files touched**:
-1. `cmd/juju/citizen/fixtures.go` — `//go:embed testdata/findings.json`;
+1. `cmd/juju/advisor/fixtures.go` — `//go:embed testdata/findings.json`;
    `Enrich(findings []Finding) []Finding`.
-2. `cmd/juju/citizen/testdata/findings.json` — three entries keyed by
+2. `cmd/juju/advisor/testdata/findings.json` — three entries keyed by
    check_id, each with a paragraph-length recommendation.
-3. `cmd/juju/citizen/command.go` — `--severity` (`cmd.StringValue` or a
+3. `cmd/juju/advisor/command.go` — `--severity` (`cmd.StringValue` or a
    manual gnuflag var; comma-split + validate) and `--no-ai` flags;
    filter pass after enrichment.
 
@@ -302,20 +302,20 @@ to zero against the standard fixture; (b) `--no-ai` recommendation
 differs from default; (c) missing fixture file degrades gracefully
 (test via a build-tag-disabled embed or by injecting a broken loader).
 
-**Demo line**: `juju citizen --severity=warning,critical`,
-`juju citizen --no-ai`.
+**Demo line**: `juju advisor --severity=warning,critical`,
+`juju advisor --no-ai`.
 
 ### M6 -- Polish + integration smoke (target: 30-60 min, optional)
 
-**Deliverable**: `tests/suites/citizen/task.sh` bootstraps microk8s,
-deploys a known-degraded charm, runs `juju citizen -o json`, asserts
+**Deliverable**: `tests/suites/advisor/task.sh` bootstraps microk8s,
+deploys a known-degraded charm, runs `juju advisor -o json`, asserts
 finding count via `jq`. Adds a `SeeAlso` link from `juju status` doc
 (if owners approve — otherwise skip).
 
 **Files touched**:
-1. `tests/suites/citizen/task.sh` (new).
+1. `tests/suites/advisor/task.sh` (new).
 2. `tests/main.sh` — register suite (one line).
-3. `cmd/juju/citizen/doc.go` — flesh out, add usage examples.
+3. `cmd/juju/advisor/doc.go` — flesh out, add usage examples.
 
 ## Complexity Tracking
 
@@ -366,15 +366,15 @@ For tight iteration during the competition:
 make juju             # produces ~/go/bin/juju
 
 # Or even faster -- skip the make wrapper
-go build -o /tmp/juju ./cmd/juju && /tmp/juju citizen
+go build -o /tmp/juju ./cmd/juju && /tmp/juju advisor
 
 # Test a single package
-go test ./cmd/juju/citizen/...
+go test ./cmd/juju/advisor/...
 
 # Run a single test
-go test -run 'TestActiveWithMessageDetector' ./cmd/juju/citizen/
+go test -run 'TestActiveWithMessageDetector' ./cmd/juju/advisor/
 ```
 
 The detector pure-function pattern means most iteration cycles never
-need a live controller — `go test ./cmd/juju/citizen/` against
+need a live controller — `go test ./cmd/juju/advisor/` against
 synthetic `params.FullStatus` is enough.

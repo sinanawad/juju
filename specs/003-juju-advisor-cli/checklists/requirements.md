@@ -1,4 +1,4 @@
-# Specification Quality Checklist: `juju citizen` operator CLI command
+# Specification Quality Checklist: `juju advisor` operator CLI command
 
 **Purpose**: Validate specification completeness and quality before proceeding to planning
 **Created**: 2026-05-13
@@ -34,7 +34,7 @@
 Validation summary (2026-05-13, single iteration):
 
 - The spec references `params.FullStatus` and the file path
-  `cmd/juju/citizen/testdata/findings.json` in passing -- these are
+  `cmd/juju/advisor/testdata/findings.json` in passing -- these are
   load-bearing implementation anchors carried over verbatim from the
   user's input and the project constitution (Principle VIII: follow
   juju conventions ruthlessly; Principle V: the fixture path is the

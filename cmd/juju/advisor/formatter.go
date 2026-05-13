@@ -1,7 +1,7 @@
 // Copyright 2026 Canonical Ltd.
 // Licensed under the AGPLv3, see LICENCE file for details.
 
-package citizen
+package advisor
 
 import (
 	"fmt"
@@ -14,8 +14,8 @@ import (
 
 // noFindingsLiteral is the exact stdout content (without trailing
 // newline) emitted in the hybrid format when no findings remain after
-// filtering. See specs/003-juju-citizen-cli/contracts/cli-contract.md.
-const noFindingsLiteral = "No citizenship findings."
+// filtering. See specs/003-juju-advisor-cli/contracts/cli-contract.md.
+const noFindingsLiteral = "No findings."
 
 // formatHybrid renders a list of findings in the byte-locked hybrid
 // format defined in contracts/cli-contract.md. The value parameter
@@ -118,7 +118,7 @@ func noteLines(f Finding) []string {
 // -- Table formatter (new default) ------------------------------------
 //
 // formatTable renders the byte-locked dashboard + table layout defined
-// in docs/superpowers/specs/2026-05-13-citizen-table-format-design.md.
+// in docs/superpowers/specs/2026-05-13-advisor-table-format-design.md.
 
 // Package-level overrides; tests flip these via export_test.go helpers.
 // The defaults match production behaviour.
@@ -263,7 +263,7 @@ func writeDashboard(writer io.Writer, findings []Finding, now time.Time) error {
 
 // writeDashboardEmpty emits the three-line dashboard panel used when
 // no findings remain. The third content line is omitted; only the
-// model/scanned line and the "all units are good citizens" line are
+// model/scanned line and the "all units look good" line are
 // shown.
 func writeDashboardEmpty(writer io.Writer, now time.Time) error {
 	model := modelNameForTest
@@ -280,7 +280,7 @@ func writeDashboardEmpty(writer io.Writer, now time.Time) error {
 	}
 	// Empty-state second line replaces the severity counts; the
 	// owners line is omitted entirely.
-	body := fmt.Sprintf("findings: 0   %s all units are good citizens", glyphCheck)
+	body := fmt.Sprintf("findings: 0   %s all units look good", glyphCheck)
 	if err := writePanelLine(writer, body, 0); err != nil {
 		return err
 	}
@@ -289,10 +289,10 @@ func writeDashboardEmpty(writer io.Writer, now time.Time) error {
 
 // writeTopBorder emits the panel's top border with the inset title.
 func writeTopBorder(writer io.Writer) error {
-	// Format: ┌─ juju citizenship report <fill ─> ┐
+	// Format: ┌─ juju advisor report <fill ─> ┐
 	// Inner width is 78. The prefix is rendered in bold (when color is
 	// enabled) so it reads as a title rather than border filler.
-	titleText := " juju citizenship report "
+	titleText := " juju advisor report "
 	if colorEnabled {
 		titleText = ansiBold + titleText + ansiBoldOff
 	}
@@ -432,10 +432,16 @@ func writeTable(writer io.Writer, findings []Finding, now time.Time) error {
 	if _, err := fmt.Fprintf(writer, "%s%s\n", rowLeftMargin, headerBody); err != nil {
 		return err
 	}
-	for _, f := range findings {
-		if err := writeTableRow(writer, f, now); err != nil {
+	prevRoot := ""
+	for i, f := range findings {
+		// Findings on the same application root are sorted contiguously
+		// (see command.go). On continuation rows we blank the SEV cell
+		// so the eye groups them under the parent entry.
+		continuation := i > 0 && entityRoot(f.Entity) == prevRoot
+		if err := writeTableRow(writer, f, now, continuation); err != nil {
 			return err
 		}
+		prevRoot = entityRoot(f.Entity)
 	}
 	return nil
 }
@@ -443,8 +449,16 @@ func writeTable(writer io.Writer, findings []Finding, now time.Time) error {
 // writeTableRow emits a single data row. SUMMARY is unbounded and
 // has no trailing column separator. Polish (color-enabled only):
 // ENTITY is bold, OWNER is dim, AGE is yellow > 30m / red > 2h.
-func writeTableRow(writer io.Writer, f Finding, now time.Time) error {
+// continuation=true blanks the SEV column to mark a multi-finding
+// entity grouping.
+func writeTableRow(writer io.Writer, f Finding, now time.Time, continuation bool) error {
 	sevCell := formatSeverityCell(f.Severity)
+	if continuation {
+		// Blank the visible SEV cell so the eye groups this row under
+		// the previous finding on the same application root. Keep the
+		// width identical for column alignment.
+		sevCell = strings.Repeat(" ", colSevWidth)
+	}
 	entityCell := padOrTruncate(f.Entity, colEntityWidth)
 	ownerCell := padOrTruncate(shortOwner(f.Owner), colOwnerWidth)
 	checkCell := padOrTruncate(f.CheckID, colCheckWidth)

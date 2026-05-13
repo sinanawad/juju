@@ -1,7 +1,7 @@
 // Copyright 2026 Canonical Ltd.
 // Licensed under the AGPLv3, see LICENCE file for details.
 
-package citizen
+package advisor
 
 import (
 	_ "embed"
@@ -49,7 +49,7 @@ func enrich(ctx *cmd.Context, in []Finding) []Finding {
 	if err != nil {
 		if ctx != nil && ctx.Stderr != nil {
 			fmt.Fprintf(ctx.Stderr,
-				"WARNING citizenship: AI enrichment skipped: %s\n", err)
+				"WARNING advisor: AI enrichment skipped: %s\n", err)
 		}
 		return in
 	}

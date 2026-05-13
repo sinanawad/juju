@@ -1,4 +1,4 @@
-# `juju citizen` live demo script
+# `juju advisor` live demo script
 
 **Saved**: 2026-05-13. This file is the resumption pointer after a
 session compaction.
@@ -9,19 +9,19 @@ session compaction.
 
 | Repo | Path | Branch | Fork remote |
 |---|---|---|---|
-| Juju | `/home/sinan.awad@canonical.com/dev/juju` | `003-juju-citizen-cli` | `github.com/sinanawad/juju` |
+| Juju | `/home/sinan.awad@canonical.com/dev/juju` | `003-juju-advisor-cli` | `github.com/sinanawad/juju` |
 | Norma charm | `/home/sinan.awad@canonical.com/dev/juju-norma-k8s` | `001-calibration-charm` | `github.com/sinanawad/juju-norma-k8s` |
 
 Most recent commits at save time:
-- Juju: `e51de1e054` feat(citizen): add entity-stuck-dying and model-suspended-credential detectors
-- Norma: `5810b5f` feat(test-bed): add stuck-dying bad-citizenship mode
+- Juju: `e51de1e054` feat(advisor): add entity-stuck-dying and model-suspended-credential detectors
+- Norma: `5810b5f` feat(test-bed): add stuck-dying bad-compliance mode
 
 ### Built artifacts
 
 | Artifact | Path | Status |
 |---|---|---|
 | `juju` client | `~/go/bin/juju` | Built via `make juju`. Contains all 9 detectors + dashboard table format + verbose snazzy format. |
-| Norma charm | `~/dev/juju-norma-k8s/juju-norma-k8s_amd64.charm` | Built via `charmcraft pack`. Contains 8 bad-citizenship modes including `stuck-dying`. |
+| Norma charm | `~/dev/juju-norma-k8s/juju-norma-k8s_amd64.charm` | Built via `charmcraft pack`. Contains 8 bad-compliance modes including `stuck-dying`. |
 | Norma ROCK | `localhost:32000/juju-norma:0.1.0` | Pushed to microk8s registry. No changes needed; existing image is fine. |
 
 ### Live controller state
@@ -34,15 +34,15 @@ Most recent commits at save time:
 
 ### Currently deployed in `norma-demo`
 
-| App | bad-citizenship-mode | Expected citizen finding |
+| App | bad-behavior-mode | Expected advisor finding |
 |---|---|---|
-| `juju-norma-k8s` | `none` (good citizen) | none |
+| `juju-norma-k8s` | `none` (compliant charm) | none |
 | `bad-active` | `active-with-message` | INFO active-with-message |
 | `bad-blocked` | `blocked-no-message` | WARNING blocked-no-message |
 | `bad-churn` | `status-churn` | WARNING status-churn |
 | `bad-stuck` | `stuck-maintenance` | WARNING stuck-maintenance |
 
-= **4 findings** in `juju citizen` baseline.
+= **4 findings** in `juju advisor` baseline.
 
 ## The 9 detectors
 
@@ -60,14 +60,14 @@ Most recent commits at save time:
 
 ## Demo arc
 
-User runs `juju citizen` in a split terminal while I narrate and dispatch deployments.
+User runs `juju advisor` in a split terminal while I narrate and dispatch deployments.
 
 ### Stage 0 — baseline (already live)
 
 ```bash
-~/go/bin/juju citizen                       # 4 findings, pretty table
-~/go/bin/juju citizen --format=verbose      # same findings, arrow-notes, AI-enriched
-~/go/bin/juju citizen --format=json | jq .  # 4 JSON objects
+~/go/bin/juju advisor                       # 4 findings, pretty table
+~/go/bin/juju advisor --format=verbose      # same findings, arrow-notes, AI-enriched
+~/go/bin/juju advisor --format=json | jq .  # 4 JSON objects
 ```
 
 ### Stage 1 — add `bad-hooky` (hook-error)
@@ -77,20 +77,20 @@ CHARM=/home/sinan.awad@canonical.com/dev/juju-norma-k8s/juju-norma-k8s_amd64.cha
 RES="--resource juju-norma-image=localhost:32000/juju-norma:0.1.0"
 
 ~/go/bin/juju deploy "$CHARM" bad-hooky $RES --trust \
-    --config bad-citizenship-mode=hook-error
+    --config bad-behavior-mode=hook-error
 ```
 
 Expected timing:
 - t≈0: deploy issued
 - t≈30s–60s: pod scheduled, charm install runs, raises RuntimeError
 - t≈90s: agent status = `error`
-- t≈90s: `juju citizen` shows 5 findings (4 existing + WARNING hook-error on bad-hooky/0)
+- t≈90s: `juju advisor` shows 5 findings (4 existing + WARNING hook-error on bad-hooky/0)
 
 ### Stage 2 — add `bad-rip` (stuck-dying) and wedge it
 
 ```bash
 ~/go/bin/juju deploy "$CHARM" bad-rip $RES --trust \
-    --config bad-citizenship-mode=stuck-dying
+    --config bad-behavior-mode=stuck-dying
 
 # wait until bad-rip/0 is active+idle (~1-2 min)
 ~/go/bin/juju status --watch 5s
@@ -106,7 +106,7 @@ Expected timing after `remove-application`:
 
 The unit will remain in Dying. To clean up after the demo:
 ```bash
-~/go/bin/juju config bad-rip bad-citizenship-mode=none
+~/go/bin/juju config bad-rip bad-behavior-mode=none
 ~/go/bin/juju resolve bad-rip/0           # retries the failed teardown hook
 # remove-application should then complete
 ```
@@ -119,7 +119,7 @@ simultaneous findings on the same entity**, alter to alternate:
 - `active("operational")` — fires active-with-message + status-churn
 - `blocked("")` — fires blocked-no-message + status-churn
 
-Tweak in `src/charm.py` inside `_bad_citizenship_unit_status()`, the
+Tweak in `src/charm.py` inside `_bad_behavior_unit_status()`, the
 `status-churn` branch:
 
 ```python
@@ -131,13 +131,13 @@ if mode == "status-churn":
 
 Then `charmcraft pack` + `juju refresh bad-churn --path ...` to roll
 out. After update-status cycle (≤30s), bad-churn/0 will start showing
-2 findings simultaneously in `juju citizen`.
+2 findings simultaneously in `juju advisor`.
 
 ### Stage 4 — model-suspended-credential (skipped live)
 
 Cannot be triggered without breaking the controller's actual cloud
 credential. Defer to:
-- Unit test demonstration: `go test -v -run TestModelSuspendedCredential ./cmd/juju/citizen/...`
+- Unit test demonstration: `go test -v -run TestModelSuspendedCredential ./cmd/juju/advisor/...`
 - Talk-track narrative: "ships in this PR; needs real credential breakage to demo"
 
 ### Final dashboard prediction (after Stages 1+2+3)
@@ -165,15 +165,15 @@ owners:       AUTHOR 6  •  OP 0  •  MIX 1  •  PLAT 0
 # Build + reinstall juju client
 cd /home/sinan.awad@canonical.com/dev/juju && make juju
 
-# Run citizen with different formats
-~/go/bin/juju citizen
-~/go/bin/juju citizen --format=verbose
-~/go/bin/juju citizen --format=json | jq .
-~/go/bin/juju citizen --no-color
-~/go/bin/juju citizen --severity=warning,critical
+# Run advisor with different formats
+~/go/bin/juju advisor
+~/go/bin/juju advisor --format=verbose
+~/go/bin/juju advisor --format=json | jq .
+~/go/bin/juju advisor --no-color
+~/go/bin/juju advisor --severity=warning,critical
 
 # Run tests (57 total)
-cd /home/sinan.awad@canonical.com/dev/juju && go test -race ./cmd/juju/citizen/... -count=1
+cd /home/sinan.awad@canonical.com/dev/juju && go test -race ./cmd/juju/advisor/... -count=1
 
 # Pack the norma charm
 cd /home/sinan.awad@canonical.com/dev/juju-norma-k8s && charmcraft pack
@@ -185,7 +185,7 @@ cd /home/sinan.awad@canonical.com/dev/juju-norma-k8s && charmcraft pack
 ~/go/bin/juju exec --unit bad-active/0 -- status-set active "demo: serving"
 
 # Clean up a stuck-dying unit
-~/go/bin/juju config bad-rip bad-citizenship-mode=none
+~/go/bin/juju config bad-rip bad-behavior-mode=none
 ~/go/bin/juju resolve bad-rip/0
 ~/go/bin/juju remove-application bad-rip
 
@@ -205,7 +205,7 @@ cd /home/sinan.awad@canonical.com/dev/juju-norma-k8s && charmcraft pack
 ## Quick context for whoever picks this up
 
 - The project constitution lives at `.specify/memory/constitution.md` (v1.0.0, 10 principles).
-- The full spec/plan/tasks tree is at `specs/003-juju-citizen-cli/`.
-- The design doc for the table format is `docs/superpowers/specs/2026-05-13-citizen-table-format-design.md`.
+- The full spec/plan/tasks tree is at `specs/003-juju-advisor-cli/`.
+- The design doc for the table format is `docs/superpowers/specs/2026-05-13-advisor-table-format-design.md`.
 - Three research agents surveyed Launchpad/GitHub/Discourse — their findings drove the choice of `entity-stuck-dying` and `model-suspended-credential` as the new detectors. Notes in conversation history (and the synthesis in this file's "9 detectors" table is the durable summary).
 - The user has a competition deadline — favor velocity over perfection in any further changes.

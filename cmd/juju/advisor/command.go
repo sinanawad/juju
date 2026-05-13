@@ -1,7 +1,7 @@
 // Copyright 2026 Canonical Ltd.
 // Licensed under the AGPLv3, see LICENCE file for details.
 
-package citizen
+package advisor
 
 import (
 	"context"
@@ -22,7 +22,7 @@ import (
 	"github.com/juju/juju/rpc/params"
 )
 
-// statusAPI is the slice of the model API the citizen command uses.
+// statusAPI is the slice of the model API the advisor command uses.
 // Defining it locally lets tests substitute a fake without touching
 // the real client. Includes the StatusHistory call used by stateful
 // detectors (e.g., status-churn).
@@ -37,9 +37,9 @@ type statusAPI interface {
 	Close() error
 }
 
-// citizenCommand surfaces deployment-level citizenship findings. The
+// advisorCommand surfaces deployment-level findings. The
 // shape mirrors cmd/juju/block/list.go per constitution Principle VIII.
-type citizenCommand struct {
+type advisorCommand struct {
 	modelcmd.ModelCommandBase
 	out cmd.Output
 
@@ -60,51 +60,51 @@ type citizenCommand struct {
 	severityFilter severitySet
 }
 
-// NewCitizenCommand returns a wrapped instance of the citizen command.
-func NewCitizenCommand() cmd.Command {
-	c := &citizenCommand{
+// NewAdvisorCommand returns a wrapped instance of the advisor command.
+func NewAdvisorCommand() cmd.Command {
+	c := &advisorCommand{
 		clock: clock.WallClock,
 	}
 	c.apiFunc = c.defaultAPIFunc
 	return modelcmd.Wrap(c)
 }
 
-const citizenCommandDoc = `
-Surface deployment-level citizenship findings for the current model.
+const advisorCommandDoc = `
+Surface deployment-level findings for the current model.
 
 Findings are degradations caused by external factors (charms,
 infrastructure) that are invisible to 'juju status'. Each finding
 carries a severity (info/warning/critical), an owner (charm-author,
 operator, mixed, or platform), the affected entity, a one-line
-summary, a recommended action, and a citation to the citizenship
-contract clause that was violated.
+summary, a recommended action, and a citation to the protocol
+clause that was violated.
 
 Examples:
 
-    juju citizen
-    juju citizen -o json
-    juju citizen --severity=warning,critical
-    juju citizen --no-ai
-    juju citizen -m other-model
+    juju advisor
+    juju advisor -o json
+    juju advisor --severity=warning,critical
+    juju advisor --no-ai
+    juju advisor -m other-model
 `
 
 // Info implements cmd.Command.Info.
-func (c *citizenCommand) Info() *cmd.Info {
+func (c *advisorCommand) Info() *cmd.Info {
 	return jujucmd.Info(&cmd.Info{
-		Name:    "citizen",
-		Purpose: "Surface deployment-level citizenship findings.",
-		Doc:     citizenCommandDoc,
+		Name:    "advisor",
+		Purpose: "Surface deployment-level findings.",
+		Doc:     advisorCommandDoc,
 		SeeAlso: []string{"status"},
 	})
 }
 
 // Init implements cmd.Command.Init. No positional arguments.
-func (c *citizenCommand) Init(args []string) error {
+func (c *advisorCommand) Init(args []string) error {
 	return cmd.CheckEmpty(args)
 }
 
 // SetFlags implements cmd.Command.SetFlags.
-func (c *citizenCommand) SetFlags(f *gnuflag.FlagSet) {
+func (c *advisorCommand) SetFlags(f *gnuflag.FlagSet) {
 	c.ModelCommandBase.SetFlags(f)
 	c.out.AddFlags(f, "table", map[string]cmd.Formatter{
 		"table":   formatTable,
@@ -119,7 +119,7 @@ func (c *citizenCommand) SetFlags(f *gnuflag.FlagSet) {
 }
 
 // Run implements cmd.Command.Run.
-func (c *citizenCommand) Run(ctx *cmd.Context) error {
+func (c *advisorCommand) Run(ctx *cmd.Context) error {
 	api, err := c.apiFunc(ctx)
 	if err != nil {
 		return errors.Trace(err)
@@ -140,7 +140,7 @@ func (c *citizenCommand) Run(ctx *cmd.Context) error {
 	stateful, sErr := runStatefulDetectors(ctx, api, status, now)
 	if sErr != nil && ctx.Stderr != nil {
 		fmt.Fprintf(ctx.Stderr,
-			"WARNING citizenship: stateful detectors degraded: %s\n", sErr)
+			"WARNING advisor: stateful detectors degraded: %s\n", sErr)
 	}
 	findings = append(findings, stateful...)
 
@@ -157,7 +157,18 @@ func (c *citizenCommand) Run(ctx *cmd.Context) error {
 		if a.Severity.rank() != b.Severity.rank() {
 			return a.Severity.rank() < b.Severity.rank()
 		}
-		// Within same severity, oldest violation first (Since-desc as age).
+		// Group findings on the same application root within a severity
+		// tier so multi-issue entities render contiguously in the table.
+		ar, br := entityRoot(a.Entity), entityRoot(b.Entity)
+		if ar != br {
+			return ar < br
+		}
+		// Within the same root, app-level findings (no slash) sort
+		// before unit-level ones so the "header" finding appears first.
+		if a.Entity != b.Entity {
+			return a.Entity < b.Entity
+		}
+		// Within same entity, oldest violation first (Since-asc as age).
 		// Findings without Since (pure detectors) sort after those with one.
 		if a.Since != nil && b.Since != nil && !a.Since.Equal(*b.Since) {
 			return a.Since.Before(*b.Since)
@@ -167,9 +178,6 @@ func (c *citizenCommand) Run(ctx *cmd.Context) error {
 		}
 		if a.Since == nil && b.Since != nil {
 			return false
-		}
-		if a.Entity != b.Entity {
-			return a.Entity < b.Entity
 		}
 		return a.CheckID < b.CheckID
 	})
@@ -190,7 +198,7 @@ func (c *citizenCommand) Run(ctx *cmd.Context) error {
 }
 
 // defaultAPIFunc opens the real Juju status API.
-func (c *citizenCommand) defaultAPIFunc(ctx context.Context) (statusAPI, error) {
+func (c *advisorCommand) defaultAPIFunc(ctx context.Context) (statusAPI, error) {
 	api, err := c.NewAPIClient(ctx)
 	if err != nil {
 		return nil, errors.Trace(err)

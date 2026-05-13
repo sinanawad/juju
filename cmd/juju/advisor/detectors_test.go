@@ -1,7 +1,7 @@
 // Copyright 2026 Canonical Ltd.
 // Licensed under the AGPLv3, see LICENCE file for details.
 
-package citizen_test
+package advisor_test
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 	"github.com/juju/names/v6"
 	"github.com/juju/tc"
 
-	"github.com/juju/juju/cmd/juju/citizen"
+	"github.com/juju/juju/cmd/juju/advisor"
 	"github.com/juju/juju/core/life"
 	corestatus "github.com/juju/juju/core/status"
 	"github.com/juju/juju/rpc/params"
@@ -68,36 +68,36 @@ func statusWithUpgradeable(app, target string) *params.FullStatus {
 // ------------------------------------------------------------------
 
 func (s *detectorsSuite) TestActiveWithMessageClean(c *tc.C) {
-	findings := citizen.RunDetectors(cleanStatus(), referenceTime)
+	findings := advisor.RunDetectors(cleanStatus(), referenceTime)
 	c.Check(findings, tc.HasLen, 0)
 }
 
 func (s *detectorsSuite) TestActiveWithMessageMatches(c *tc.C) {
 	st := statusWithUnit("grafana-k8s", "grafana-k8s/0", "active", "ready", nil)
-	findings := citizen.RunDetectors(st, referenceTime)
+	findings := advisor.RunDetectors(st, referenceTime)
 	// Exactly one info finding from the active-with-message detector;
 	// charm-revision-aging emits zero (no CanUpgradeTo);
 	// unit-blocked-stale emits zero (not blocked).
 	c.Assert(findings, tc.HasLen, 1)
 	f := findings[0]
 	c.Check(f.CheckID, tc.Equals, "active-with-message")
-	c.Check(f.Severity, tc.Equals, citizen.SeverityInfo)
-	c.Check(f.Owner, tc.Equals, citizen.OwnerCharmAuthor)
-	c.Check(f.EntityKind, tc.Equals, citizen.EntityKindUnit)
+	c.Check(f.Severity, tc.Equals, advisor.SeverityInfo)
+	c.Check(f.Owner, tc.Equals, advisor.OwnerCharmAuthor)
+	c.Check(f.EntityKind, tc.Equals, advisor.EntityKindUnit)
 	c.Check(f.Entity, tc.Equals, "grafana-k8s/0")
 }
 
 func (s *detectorsSuite) TestActiveWithMessageWhitespaceCountsAsMessage(c *tc.C) {
 	// Edge case from spec: whitespace-only message is not "empty".
 	st := statusWithUnit("noisy", "noisy/0", "active", "   ", nil)
-	findings := citizen.RunDetectors(st, referenceTime)
+	findings := advisor.RunDetectors(st, referenceTime)
 	c.Check(findings, tc.HasLen, 1)
 	c.Check(findings[0].CheckID, tc.Equals, "active-with-message")
 }
 
 func (s *detectorsSuite) TestActiveWithEmptyMessageNoFinding(c *tc.C) {
 	st := statusWithUnit("quiet", "quiet/0", "active", "", nil)
-	findings := citizen.RunDetectors(st, referenceTime)
+	findings := advisor.RunDetectors(st, referenceTime)
 	c.Check(findings, tc.HasLen, 0)
 }
 
@@ -107,13 +107,13 @@ func (s *detectorsSuite) TestActiveWithEmptyMessageNoFinding(c *tc.C) {
 
 func (s *detectorsSuite) TestBlockedNoMessageEmpty(c *tc.C) {
 	st := statusWithUnit("a", "a/0", "blocked", "", nil)
-	findings := citizen.RunDetectors(st, referenceTime)
+	findings := advisor.RunDetectors(st, referenceTime)
 	c.Assert(findings, tc.HasLen, 1)
 	f := findings[0]
 	c.Check(f.CheckID, tc.Equals, "blocked-no-message")
-	c.Check(f.Severity, tc.Equals, citizen.SeverityWarning)
-	c.Check(f.Owner, tc.Equals, citizen.OwnerCharmAuthor)
-	c.Check(f.EntityKind, tc.Equals, citizen.EntityKindUnit)
+	c.Check(f.Severity, tc.Equals, advisor.SeverityWarning)
+	c.Check(f.Owner, tc.Equals, advisor.OwnerCharmAuthor)
+	c.Check(f.EntityKind, tc.Equals, advisor.EntityKindUnit)
 	c.Check(f.Entity, tc.Equals, "a/0")
 }
 
@@ -121,15 +121,15 @@ func (s *detectorsSuite) TestBlockedNoMessageWhitespaceCountsAsEmpty(c *tc.C) {
 	// Symmetric edge case: whitespace-only counts as "no actionable
 	// message" because the operator cannot act on it.
 	st := statusWithUnit("a", "a/0", "blocked", "   \t  ", nil)
-	findings := citizen.RunDetectors(st, referenceTime)
+	findings := advisor.RunDetectors(st, referenceTime)
 	c.Assert(findings, tc.HasLen, 1)
 	c.Check(findings[0].CheckID, tc.Equals, "blocked-no-message")
 }
 
 func (s *detectorsSuite) TestBlockedWithMessageNoFinding(c *tc.C) {
 	st := statusWithUnit("a", "a/0", "blocked", "missing required config", nil)
-	findings := citizen.RunDetectors(st, referenceTime)
-	// Blocked with an actionable message is GOOD citizenship -- the
+	findings := advisor.RunDetectors(st, referenceTime)
+	// Blocked with an actionable message is GOOD behavior -- the
 	// detector must NOT fire. Since is nil so unit-blocked-stale also
 	// emits zero. Total: 0 findings.
 	c.Check(findings, tc.HasLen, 0)
@@ -140,19 +140,19 @@ func (s *detectorsSuite) TestBlockedWithMessageNoFinding(c *tc.C) {
 // ------------------------------------------------------------------
 
 func (s *detectorsSuite) TestCharmRevisionAgingClean(c *tc.C) {
-	findings := citizen.RunDetectors(cleanStatus(), referenceTime)
+	findings := advisor.RunDetectors(cleanStatus(), referenceTime)
 	c.Check(findings, tc.HasLen, 0)
 }
 
 func (s *detectorsSuite) TestCharmRevisionAgingMatches(c *tc.C) {
 	st := statusWithUpgradeable("postgresql-k8s", "ch:postgresql-k8s-42")
-	findings := citizen.RunDetectors(st, referenceTime)
+	findings := advisor.RunDetectors(st, referenceTime)
 	c.Assert(findings, tc.HasLen, 1)
 	f := findings[0]
 	c.Check(f.CheckID, tc.Equals, "charm-revision-aging")
-	c.Check(f.Severity, tc.Equals, citizen.SeverityWarning)
-	c.Check(f.Owner, tc.Equals, citizen.OwnerOperator)
-	c.Check(f.EntityKind, tc.Equals, citizen.EntityKindApplication)
+	c.Check(f.Severity, tc.Equals, advisor.SeverityWarning)
+	c.Check(f.Owner, tc.Equals, advisor.OwnerOperator)
+	c.Check(f.EntityKind, tc.Equals, advisor.EntityKindApplication)
 	c.Check(f.Entity, tc.Equals, "postgresql-k8s")
 }
 
@@ -164,7 +164,7 @@ func (s *detectorsSuite) TestUnitBlockedStaleUnderThreshold(c *tc.C) {
 	// 23h59m59s blocked -> no finding.
 	since := referenceTime.Add(-(23*time.Hour + 59*time.Minute + 59*time.Second))
 	st := statusWithUnit("a", "a/0", "blocked", "waiting", &since)
-	findings := citizen.RunDetectors(st, referenceTime)
+	findings := advisor.RunDetectors(st, referenceTime)
 	c.Check(findings, tc.HasLen, 0)
 }
 
@@ -172,9 +172,9 @@ func (s *detectorsSuite) TestUnitBlockedStaleJustOverWarning(c *tc.C) {
 	// 24h0m1s blocked -> warning.
 	since := referenceTime.Add(-(24*time.Hour + time.Second))
 	st := statusWithUnit("a", "a/0", "blocked", "waiting", &since)
-	findings := citizen.RunDetectors(st, referenceTime)
+	findings := advisor.RunDetectors(st, referenceTime)
 	c.Assert(findings, tc.HasLen, 1)
-	c.Check(findings[0].Severity, tc.Equals, citizen.SeverityWarning)
+	c.Check(findings[0].Severity, tc.Equals, advisor.SeverityWarning)
 	c.Check(findings[0].CheckID, tc.Equals, "unit-blocked-stale")
 }
 
@@ -182,24 +182,24 @@ func (s *detectorsSuite) TestUnitBlockedStaleAtSevenDayBoundary(c *tc.C) {
 	// Exactly 7d blocked -> still warning (per cli-contract: (24h, 7d] = warning).
 	since := referenceTime.Add(-(7 * 24 * time.Hour))
 	st := statusWithUnit("a", "a/0", "blocked", "waiting", &since)
-	findings := citizen.RunDetectors(st, referenceTime)
+	findings := advisor.RunDetectors(st, referenceTime)
 	c.Assert(findings, tc.HasLen, 1)
-	c.Check(findings[0].Severity, tc.Equals, citizen.SeverityWarning)
+	c.Check(findings[0].Severity, tc.Equals, advisor.SeverityWarning)
 }
 
 func (s *detectorsSuite) TestUnitBlockedStaleJustOverCritical(c *tc.C) {
 	// 7d+1s blocked -> critical.
 	since := referenceTime.Add(-(7*24*time.Hour + time.Second))
 	st := statusWithUnit("a", "a/0", "blocked", "waiting", &since)
-	findings := citizen.RunDetectors(st, referenceTime)
+	findings := advisor.RunDetectors(st, referenceTime)
 	c.Assert(findings, tc.HasLen, 1)
-	c.Check(findings[0].Severity, tc.Equals, citizen.SeverityCritical)
+	c.Check(findings[0].Severity, tc.Equals, advisor.SeverityCritical)
 }
 
 func (s *detectorsSuite) TestUnitBlockedStaleNilSince(c *tc.C) {
 	// Defensive: nil Since must not panic, must yield zero findings.
 	st := statusWithUnit("a", "a/0", "blocked", "waiting", nil)
-	findings := citizen.RunDetectors(st, referenceTime)
+	findings := advisor.RunDetectors(st, referenceTime)
 	c.Check(findings, tc.HasLen, 0)
 }
 
@@ -207,7 +207,7 @@ func (s *detectorsSuite) TestUnitBlockedStaleFutureSince(c *tc.C) {
 	// Clock skew: Since in the future -> no finding (per spec edge case).
 	since := referenceTime.Add(1 * time.Minute)
 	st := statusWithUnit("a", "a/0", "blocked", "waiting", &since)
-	findings := citizen.RunDetectors(st, referenceTime)
+	findings := advisor.RunDetectors(st, referenceTime)
 	c.Check(findings, tc.HasLen, 0)
 }
 
@@ -216,13 +216,13 @@ func (s *detectorsSuite) TestUnitBlockedStaleFutureSince(c *tc.C) {
 // ------------------------------------------------------------------
 
 func (s *detectorsSuite) TestNilStatus(c *tc.C) {
-	findings := citizen.RunDetectors(nil, referenceTime)
+	findings := advisor.RunDetectors(nil, referenceTime)
 	c.Check(findings, tc.HasLen, 0)
 }
 
 func (s *detectorsSuite) TestNilApplicationsMap(c *tc.C) {
 	st := &params.FullStatus{Applications: nil}
-	findings := citizen.RunDetectors(st, referenceTime)
+	findings := advisor.RunDetectors(st, referenceTime)
 	c.Check(findings, tc.HasLen, 0)
 }
 
@@ -232,7 +232,7 @@ func (s *detectorsSuite) TestNilUnitsMap(c *tc.C) {
 			"a": {Units: nil},
 		},
 	}
-	findings := citizen.RunDetectors(st, referenceTime)
+	findings := advisor.RunDetectors(st, referenceTime)
 	c.Check(findings, tc.HasLen, 0)
 }
 
@@ -282,12 +282,12 @@ func (s *detectorsSuite) TestStatusChurnFlagsChurningUnit(c *tc.C) {
 			historyEntry(corestatus.Waiting, 180),
 		},
 	}}
-	findings, err := citizen.RunStatefulDetectors(context.Background(), api, st, referenceTime)
+	findings, err := advisor.RunStatefulDetectors(context.Background(), api, st, referenceTime)
 	c.Assert(err, tc.ErrorIsNil)
 	c.Assert(findings, tc.HasLen, 1)
 	c.Check(findings[0].CheckID, tc.Equals, "status-churn")
-	c.Check(findings[0].Severity, tc.Equals, citizen.SeverityWarning)
-	c.Check(findings[0].Owner, tc.Equals, citizen.OwnerCharmAuthor)
+	c.Check(findings[0].Severity, tc.Equals, advisor.SeverityWarning)
+	c.Check(findings[0].Owner, tc.Equals, advisor.OwnerCharmAuthor)
 	c.Check(findings[0].Entity, tc.Equals, "churn/0")
 }
 
@@ -300,7 +300,7 @@ func (s *detectorsSuite) TestStatusChurnNoFlagOnStableUnit(c *tc.C) {
 			historyEntry(corestatus.Active, 7000),
 		},
 	}}
-	findings, err := citizen.RunStatefulDetectors(context.Background(), api, st, referenceTime)
+	findings, err := advisor.RunStatefulDetectors(context.Background(), api, st, referenceTime)
 	c.Assert(err, tc.ErrorIsNil)
 	c.Check(findings, tc.HasLen, 0)
 }
@@ -318,7 +318,7 @@ func (s *detectorsSuite) TestStatusChurnIgnoresEntriesOutsideWindow(c *tc.C) {
 			historyEntry(corestatus.Waiting, 1500),
 		},
 	}}
-	findings, err := citizen.RunStatefulDetectors(context.Background(), api, st, referenceTime)
+	findings, err := advisor.RunStatefulDetectors(context.Background(), api, st, referenceTime)
 	c.Assert(err, tc.ErrorIsNil)
 	c.Check(findings, tc.HasLen, 0)
 }
@@ -326,7 +326,7 @@ func (s *detectorsSuite) TestStatusChurnIgnoresEntriesOutsideWindow(c *tc.C) {
 func (s *detectorsSuite) TestStatusChurnSurfacesAPIErrorAsAdvisory(c *tc.C) {
 	st := statusWithUnit("u", "u/0", "active", "", nil)
 	api := &fakeHistoryAPI{err: errAPI("history disabled")}
-	findings, err := citizen.RunStatefulDetectors(context.Background(), api, st, referenceTime)
+	findings, err := advisor.RunStatefulDetectors(context.Background(), api, st, referenceTime)
 	// Advisory: err returned, findings empty, callers continue.
 	c.Check(err, tc.ErrorMatches, "history disabled")
 	c.Check(findings, tc.HasLen, 0)
@@ -356,12 +356,12 @@ func (s *detectorsSuite) TestStuckMaintenanceFlagsLongRun(c *tc.C) {
 			historyEntry(corestatus.Maintenance, 600),
 		},
 	}}
-	findings, err := citizen.RunStatefulDetectors(context.Background(), api, st, referenceTime)
+	findings, err := advisor.RunStatefulDetectors(context.Background(), api, st, referenceTime)
 	c.Assert(err, tc.ErrorIsNil)
 	c.Assert(findings, tc.HasLen, 1)
 	c.Check(findings[0].CheckID, tc.Equals, "stuck-maintenance")
-	c.Check(findings[0].Severity, tc.Equals, citizen.SeverityWarning)
-	c.Check(findings[0].Owner, tc.Equals, citizen.OwnerCharmAuthor)
+	c.Check(findings[0].Severity, tc.Equals, advisor.SeverityWarning)
+	c.Check(findings[0].Owner, tc.Equals, advisor.OwnerCharmAuthor)
 	c.Check(findings[0].Entity, tc.Equals, "stuck/0")
 }
 
@@ -376,7 +376,7 @@ func (s *detectorsSuite) TestStuckMaintenanceNoFlagOnShortRun(c *tc.C) {
 			historyEntry(corestatus.Maintenance, 120),
 		},
 	}}
-	findings, err := citizen.RunStatefulDetectors(context.Background(), api, st, referenceTime)
+	findings, err := advisor.RunStatefulDetectors(context.Background(), api, st, referenceTime)
 	c.Assert(err, tc.ErrorIsNil)
 	c.Check(findings, tc.HasLen, 0)
 }
@@ -387,7 +387,7 @@ func (s *detectorsSuite) TestStuckMaintenanceIgnoresNonMaintenance(c *tc.C) {
 	api := &fakeHistoryAPI{byUnit: map[string]corestatus.History{
 		"ok/0": {historyEntry(corestatus.Maintenance, 9999)},
 	}}
-	findings, err := citizen.RunStatefulDetectors(context.Background(), api, st, referenceTime)
+	findings, err := advisor.RunStatefulDetectors(context.Background(), api, st, referenceTime)
 	c.Assert(err, tc.ErrorIsNil)
 	c.Check(findings, tc.HasLen, 0)
 }
@@ -407,7 +407,7 @@ func (s *detectorsSuite) TestStuckMaintenanceHandlesOldestFirstHistory(c *tc.C) 
 			historyEntry(corestatus.Maintenance, 30),
 		},
 	}}
-	findings, err := citizen.RunStatefulDetectors(context.Background(), api, st, referenceTime)
+	findings, err := advisor.RunStatefulDetectors(context.Background(), api, st, referenceTime)
 	c.Assert(err, tc.ErrorIsNil)
 	c.Assert(findings, tc.HasLen, 1)
 	c.Check(findings[0].CheckID, tc.Equals, "stuck-maintenance")
@@ -426,7 +426,7 @@ func (s *detectorsSuite) TestStuckMaintenanceStopsAtRecentTransition(c *tc.C) {
 			historyEntry(corestatus.Active, 2000),
 		},
 	}}
-	findings, err := citizen.RunStatefulDetectors(context.Background(), api, st, referenceTime)
+	findings, err := advisor.RunStatefulDetectors(context.Background(), api, st, referenceTime)
 	c.Assert(err, tc.ErrorIsNil)
 	c.Check(findings, tc.HasLen, 0)
 }
@@ -445,13 +445,13 @@ func (s *detectorsSuite) TestHookErrorFlagsRecentError(c *tc.C) {
 			historyEntry(corestatus.Idle, 600),
 		},
 	}}
-	findings, err := citizen.RunStatefulDetectors(context.Background(), api, st, referenceTime)
+	findings, err := advisor.RunStatefulDetectors(context.Background(), api, st, referenceTime)
 	c.Assert(err, tc.ErrorIsNil)
 	c.Assert(findings, tc.HasLen, 1)
 	c.Check(findings[0].CheckID, tc.Equals, "hook-error")
-	c.Check(findings[0].Severity, tc.Equals, citizen.SeverityWarning)
-	c.Check(findings[0].Owner, tc.Equals, citizen.OwnerCharmAuthor)
-	c.Check(findings[0].EntityKind, tc.Equals, citizen.EntityKindUnit)
+	c.Check(findings[0].Severity, tc.Equals, advisor.SeverityWarning)
+	c.Check(findings[0].Owner, tc.Equals, advisor.OwnerCharmAuthor)
+	c.Check(findings[0].EntityKind, tc.Equals, advisor.EntityKindUnit)
 	c.Check(findings[0].Entity, tc.Equals, "crashy/0")
 }
 
@@ -465,7 +465,7 @@ func (s *detectorsSuite) TestHookErrorNoFlagOnOldError(c *tc.C) {
 			historyEntry(corestatus.Idle, 60*60+10),
 		},
 	}}
-	findings, err := citizen.RunStatefulDetectors(context.Background(), api, st, referenceTime)
+	findings, err := advisor.RunStatefulDetectors(context.Background(), api, st, referenceTime)
 	c.Assert(err, tc.ErrorIsNil)
 	c.Check(findings, tc.HasLen, 0)
 }
@@ -483,7 +483,7 @@ func (s *detectorsSuite) TestHookErrorIgnoresNonError(c *tc.C) {
 			historyEntry(corestatus.Idle, 1800),
 		},
 	}}
-	findings, err := citizen.RunStatefulDetectors(context.Background(), api, st, referenceTime)
+	findings, err := advisor.RunStatefulDetectors(context.Background(), api, st, referenceTime)
 	c.Assert(err, tc.ErrorIsNil)
 	c.Check(findings, tc.HasLen, 0)
 }
@@ -496,13 +496,13 @@ func (s *detectorsSuite) TestEntityStuckDyingWarningThreshold(c *tc.C) {
 	// Unit Life=dying, transitioned 6 minutes ago -> warning finding.
 	since := referenceTime.Add(-6 * time.Minute)
 	st := statusWithDyingUnit("a", "a/0", &since)
-	findings := citizen.RunDetectors(st, referenceTime)
+	findings := advisor.RunDetectors(st, referenceTime)
 	c.Assert(findings, tc.HasLen, 1)
 	f := findings[0]
 	c.Check(f.CheckID, tc.Equals, "entity-stuck-dying")
-	c.Check(f.Severity, tc.Equals, citizen.SeverityWarning)
-	c.Check(f.Owner, tc.Equals, citizen.OwnerMixed)
-	c.Check(f.EntityKind, tc.Equals, citizen.EntityKindUnit)
+	c.Check(f.Severity, tc.Equals, advisor.SeverityWarning)
+	c.Check(f.Owner, tc.Equals, advisor.OwnerMixed)
+	c.Check(f.EntityKind, tc.Equals, advisor.EntityKindUnit)
 	c.Check(f.Entity, tc.Equals, "a/0")
 	c.Assert(f.Since, tc.NotNil)
 	c.Check(f.Since.Equal(since), tc.IsTrue)
@@ -512,9 +512,9 @@ func (s *detectorsSuite) TestEntityStuckDyingCriticalThreshold(c *tc.C) {
 	// Unit Life=dying, transitioned 90 minutes ago -> critical finding.
 	since := referenceTime.Add(-90 * time.Minute)
 	st := statusWithDyingUnit("a", "a/0", &since)
-	findings := citizen.RunDetectors(st, referenceTime)
+	findings := advisor.RunDetectors(st, referenceTime)
 	c.Assert(findings, tc.HasLen, 1)
-	c.Check(findings[0].Severity, tc.Equals, citizen.SeverityCritical)
+	c.Check(findings[0].Severity, tc.Equals, advisor.SeverityCritical)
 	c.Check(findings[0].CheckID, tc.Equals, "entity-stuck-dying")
 }
 
@@ -532,13 +532,13 @@ func (s *detectorsSuite) TestEntityStuckDyingApplicationLevel(c *tc.C) {
 			},
 		},
 	}
-	findings := citizen.RunDetectors(st, referenceTime)
+	findings := advisor.RunDetectors(st, referenceTime)
 	c.Assert(findings, tc.HasLen, 1)
 	f := findings[0]
 	c.Check(f.CheckID, tc.Equals, "entity-stuck-dying")
-	c.Check(f.EntityKind, tc.Equals, citizen.EntityKindApplication)
+	c.Check(f.EntityKind, tc.Equals, advisor.EntityKindApplication)
 	c.Check(f.Entity, tc.Equals, "a")
-	c.Check(f.Severity, tc.Equals, citizen.SeverityWarning)
+	c.Check(f.Severity, tc.Equals, advisor.SeverityWarning)
 }
 
 func (s *detectorsSuite) TestEntityStuckDyingNotDyingNoFinding(c *tc.C) {
@@ -564,7 +564,7 @@ func (s *detectorsSuite) TestEntityStuckDyingNotDyingNoFinding(c *tc.C) {
 			},
 		},
 	}
-	findings := citizen.RunDetectors(st, referenceTime)
+	findings := advisor.RunDetectors(st, referenceTime)
 	c.Check(findings, tc.HasLen, 0)
 }
 
@@ -572,7 +572,7 @@ func (s *detectorsSuite) TestEntityStuckDyingNilSinceNoFinding(c *tc.C) {
 	// Unit Life=dying but Since==nil on both workload AND agent ->
 	// defensive zero findings rather than a panic.
 	st := statusWithDyingUnit("a", "a/0", nil)
-	findings := citizen.RunDetectors(st, referenceTime)
+	findings := advisor.RunDetectors(st, referenceTime)
 	c.Check(findings, tc.HasLen, 0)
 }
 
@@ -583,13 +583,13 @@ func (s *detectorsSuite) TestEntityStuckDyingNilSinceNoFinding(c *tc.C) {
 func (s *detectorsSuite) TestModelSuspendedCredentialFires(c *tc.C) {
 	since := referenceTime.Add(-1 * time.Hour)
 	st := statusWithSuspendedModel("prod", &since)
-	findings := citizen.RunDetectors(st, referenceTime)
+	findings := advisor.RunDetectors(st, referenceTime)
 	c.Assert(findings, tc.HasLen, 1)
 	f := findings[0]
 	c.Check(f.CheckID, tc.Equals, "model-suspended-credential")
-	c.Check(f.Severity, tc.Equals, citizen.SeverityCritical)
-	c.Check(f.Owner, tc.Equals, citizen.OwnerOperator)
-	c.Check(f.EntityKind, tc.Equals, citizen.EntityKindModel)
+	c.Check(f.Severity, tc.Equals, advisor.SeverityCritical)
+	c.Check(f.Owner, tc.Equals, advisor.OwnerOperator)
+	c.Check(f.EntityKind, tc.Equals, advisor.EntityKindModel)
 	c.Check(f.Entity, tc.Equals, "prod")
 	c.Assert(f.Since, tc.NotNil)
 	c.Check(f.Since.Equal(since), tc.IsTrue)
@@ -605,7 +605,7 @@ func (s *detectorsSuite) TestModelSuspendedCredentialNotSuspendedNoFinding(c *tc
 		},
 		Applications: map[string]params.ApplicationStatus{},
 	}
-	findings := citizen.RunDetectors(st, referenceTime)
+	findings := advisor.RunDetectors(st, referenceTime)
 	c.Check(findings, tc.HasLen, 0)
 }
 

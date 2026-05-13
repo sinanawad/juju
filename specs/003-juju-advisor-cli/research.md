@@ -9,8 +9,8 @@ established patterns. Each decision below cites the source.
 ### Decision: Command shape
 
 **Decision**: Mirror `cmd/juju/block/list.go`.
-- `NewCitizenCommand()` returns `modelcmd.Wrap(&citizenCommand{...})`.
-- `citizenCommand` embeds `modelcmd.ModelCommandBase` (gives `-m`, API
+- `NewAdvisorCommand()` returns `modelcmd.Wrap(&advisorCommand{...})`.
+- `advisorCommand` embeds `modelcmd.ModelCommandBase` (gives `-m`, API
   root resolution, controller selection, login).
 - `Info() *cmd.Info` returns `jujucmd.Info(...)`.
 - `SetFlags(f *gnuflag.FlagSet)` calls `c.ModelCommandBase.SetFlags(f)`,
@@ -35,7 +35,7 @@ facade method, accessed via:
 ```go
 import "github.com/juju/juju/api/client/client"
 
-func (c *citizenCommand) getStatusAPI(ctx context.Context) (statusAPI, error) {
+func (c *advisorCommand) getStatusAPI(ctx context.Context) (statusAPI, error) {
     root, err := c.NewAPIRoot(ctx)
     if err != nil {
         return nil, errors.Trace(err)
@@ -100,7 +100,7 @@ type fixture map[string]string // check_id -> recommendation
 ```
 
 The file path is exactly the spec-mandated
-`cmd/juju/citizen/testdata/findings.json`. The map is loaded once per
+`cmd/juju/advisor/testdata/findings.json`. The map is loaded once per
 invocation in a package-level `sync.Once` or simply on first Run() call.
 
 **Rationale**: Spec Out of Scope excludes live LLM. Embed avoids any
@@ -109,7 +109,7 @@ already specified for missing fixtures, but with embed the fixture is
 present unless the JSON itself is malformed).
 
 **Alternatives considered**:
-- Reading from `~/.local/share/juju/citizen-fixtures.json`. Rejected:
+- Reading from `~/.local/share/juju/advisor-fixtures.json`. Rejected:
   extra user setup.
 - Calling a real LLM endpoint. Rejected: explicitly out of scope.
 
@@ -119,10 +119,10 @@ present unless the JSON itself is malformed).
 The Winter Of Our Discontent."
 
 ```go
-type citizenCommand struct {
+type advisorCommand struct {
     modelcmd.ModelCommandBase
     out      cmd.Output
-    clock    clock.Clock // defaults to clock.WallClock in NewCitizenCommand
+    clock    clock.Clock // defaults to clock.WallClock in NewAdvisorCommand
     // ...
 }
 ```
@@ -139,7 +139,7 @@ forbidden by repo coding rules.
 ### Decision: Contract clause IDs
 
 **Decision**: Each detector cites a stable URL-like string of the form
-`protocol://citizenship/4c#<slug>`.
+`protocol://advisor/4c#<slug>`.
 
 | Detector              | check_id                | protocol_ref slug          |
 |-----------------------|-------------------------|----------------------------|
@@ -178,7 +178,7 @@ alphabetically near the existing `block.New*Command()` entries (line
 458-460 of the current file). Single line:
 
 ```go
-r.Register(citizen.NewCitizenCommand())
+r.Register(advisor.NewAdvisorCommand())
 ```
 
 **Rationale**: Verified by `grep registerCommands cmd/juju/commands/main.go`

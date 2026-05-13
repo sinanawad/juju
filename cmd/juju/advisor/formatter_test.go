@@ -1,7 +1,7 @@
 // Copyright 2026 Canonical Ltd.
 // Licensed under the AGPLv3, see LICENCE file for details.
 
-package citizen_test
+package advisor_test
 
 import (
 	"bytes"
@@ -13,7 +13,7 @@ import (
 
 	"github.com/juju/tc"
 
-	"github.com/juju/juju/cmd/juju/citizen"
+	"github.com/juju/juju/cmd/juju/advisor"
 )
 
 func TestFormatterSuite(t *stdtesting.T) {
@@ -23,58 +23,58 @@ func TestFormatterSuite(t *stdtesting.T) {
 type formatterSuite struct{}
 
 // sampleFindings mirrors the canonical example in
-// specs/003-juju-citizen-cli/contracts/cli-contract.md.
-func sampleFindings() []citizen.Finding {
-	return []citizen.Finding{
+// specs/003-juju-advisor-cli/contracts/cli-contract.md.
+func sampleFindings() []advisor.Finding {
+	return []advisor.Finding{
 		{
 			CheckID:        "unit-blocked-stale",
-			Severity:       citizen.SeverityCritical,
+			Severity:       advisor.SeverityCritical,
 			Entity:         "postgresql/0",
-			EntityKind:     citizen.EntityKindUnit,
-			Owner:          citizen.OwnerMixed,
+			EntityKind:     advisor.EntityKindUnit,
+			Owner:          advisor.OwnerMixed,
 			Summary:        "Unit has been blocked for 9 days.",
 			Recommendation: "Investigate blocking condition: charm hook message, peer state,\nor operator intervention required.",
-			ProtocolRef:    "protocol://citizenship/4c#status/blocked-bounded",
+			ProtocolRef:    "protocol://advisor/4c#status/blocked-bounded",
 		},
 		{
 			CheckID:        "charm-revision-aging",
-			Severity:       citizen.SeverityWarning,
+			Severity:       advisor.SeverityWarning,
 			Entity:         "nginx-ingress",
-			EntityKind:     citizen.EntityKindApplication,
-			Owner:          citizen.OwnerOperator,
+			EntityKind:     advisor.EntityKindApplication,
+			Owner:          advisor.OwnerOperator,
 			Summary:        "Application is behind its tracked channel.",
 			Recommendation: "Run 'juju refresh nginx-ingress' to pick up newer revision.",
-			ProtocolRef:    "protocol://citizenship/4c#revision/track-channel",
+			ProtocolRef:    "protocol://advisor/4c#revision/track-channel",
 		},
 		{
 			CheckID:        "active-with-message",
-			Severity:       citizen.SeverityInfo,
+			Severity:       advisor.SeverityInfo,
 			Entity:         "postgresql/0",
-			EntityKind:     citizen.EntityKindUnit,
-			Owner:          citizen.OwnerCharmAuthor,
+			EntityKind:     advisor.EntityKindUnit,
+			Owner:          advisor.OwnerCharmAuthor,
 			Summary:        "Unit reports 'active' with a non-empty status message.",
 			Recommendation: "Convention is that 'active' carries no message; the empty string\nis the visual signal of normal operation.",
-			ProtocolRef:    "protocol://citizenship/4c#status/active-empty-msg",
+			ProtocolRef:    "protocol://advisor/4c#status/active-empty-msg",
 		},
 	}
 }
 
 func (s *formatterSuite) TestHybridEmpty(c *tc.C) {
 	var buf bytes.Buffer
-	err := citizen.FormatHybrid(&buf, []citizen.Finding{})
+	err := advisor.FormatHybrid(&buf, []advisor.Finding{})
 	c.Assert(err, tc.ErrorIsNil)
-	c.Check(buf.String(), tc.Equals, citizen.NoFindingsLiteral+"\n")
+	c.Check(buf.String(), tc.Equals, advisor.NoFindingsLiteral+"\n")
 }
 
 func (s *formatterSuite) TestHybridGolden(c *tc.C) {
 	// Disable color so the assertion pins the structural format only.
 	// The snazzy variant (ANSI bold/dim + colored severity tag +
 	// Unicode arrow) is exercised separately by the live demo.
-	restore := citizen.SetTableFormatTestOverrides(time.Now, false, "")
+	restore := advisor.SetTableFormatTestOverrides(time.Now, false, "")
 	defer restore()
 
 	var buf bytes.Buffer
-	err := citizen.FormatHybrid(&buf, sampleFindings())
+	err := advisor.FormatHybrid(&buf, sampleFindings())
 	c.Assert(err, tc.ErrorIsNil)
 	expected := "" +
 		"● CRITICAL postgresql/0 [unit-blocked-stale]\n" +
@@ -98,12 +98,12 @@ func (s *formatterSuite) TestHybridGolden(c *tc.C) {
 // If a future change adds, removes, or renames a field, this test
 // fails before merge.
 func (s *formatterSuite) TestFindingFieldSetExactlyEight(c *tc.C) {
-	f := citizen.Finding{
+	f := advisor.Finding{
 		CheckID:        "x",
-		Severity:       citizen.SeverityInfo,
+		Severity:       advisor.SeverityInfo,
 		Entity:         "e",
-		EntityKind:     citizen.EntityKindUnit,
-		Owner:          citizen.OwnerCharmAuthor,
+		EntityKind:     advisor.EntityKindUnit,
+		Owner:          advisor.OwnerCharmAuthor,
 		Summary:        "s",
 		Recommendation: "r",
 		ProtocolRef:    "p",
@@ -140,51 +140,51 @@ var tableFixedNow = time.Date(2026, 5, 13, 13, 54, 21, 0, time.UTC)
 // TestFormatTableGolden. Ordering matters: tests pin row order to
 // produce ages 5m, 18m, —, — and exercise both severity colors and
 // the nil-Since em-dash path.
-func sampleFindingsWithSince() []citizen.Finding {
+func sampleFindingsWithSince() []advisor.Finding {
 	since5m := tableFixedNow.Add(-5 * time.Minute)
 	since18m := tableFixedNow.Add(-18 * time.Minute)
-	return []citizen.Finding{
+	return []advisor.Finding{
 		{
 			CheckID:        "hook-error",
-			Severity:       citizen.SeverityCritical,
+			Severity:       advisor.SeverityCritical,
 			Entity:         "db/0",
-			EntityKind:     citizen.EntityKindUnit,
-			Owner:          citizen.OwnerCharmAuthor,
+			EntityKind:     advisor.EntityKindUnit,
+			Owner:          advisor.OwnerCharmAuthor,
 			Summary:        "Recent uncaught hook exception",
 			Recommendation: "Investigate hook traceback.",
-			ProtocolRef:    "protocol://citizenship/4c#agent/error",
+			ProtocolRef:    "protocol://advisor/4c#agent/error",
 			Since:          &since5m,
 		},
 		{
 			CheckID:        "status-churn",
-			Severity:       citizen.SeverityWarning,
+			Severity:       advisor.SeverityWarning,
 			Entity:         "bad-churn/0",
-			EntityKind:     citizen.EntityKindUnit,
-			Owner:          citizen.OwnerCharmAuthor,
+			EntityKind:     advisor.EntityKindUnit,
+			Owner:          advisor.OwnerCharmAuthor,
 			Summary:        "Workload status churning",
 			Recommendation: "Stabilize status reporting.",
-			ProtocolRef:    "protocol://citizenship/4c#status/churn",
+			ProtocolRef:    "protocol://advisor/4c#status/churn",
 			Since:          &since18m,
 		},
 		{
 			CheckID:        "blocked-no-message",
-			Severity:       citizen.SeverityWarning,
+			Severity:       advisor.SeverityWarning,
 			Entity:         "bad-blocked/0",
-			EntityKind:     citizen.EntityKindUnit,
-			Owner:          citizen.OwnerCharmAuthor,
+			EntityKind:     advisor.EntityKindUnit,
+			Owner:          advisor.OwnerCharmAuthor,
 			Summary:        "Blocked w/o actionable msg",
 			Recommendation: "Set a message describing the block.",
-			ProtocolRef:    "protocol://citizenship/4c#status/blocked-msg",
+			ProtocolRef:    "protocol://advisor/4c#status/blocked-msg",
 		},
 		{
 			CheckID:        "active-with-message",
-			Severity:       citizen.SeverityInfo,
+			Severity:       advisor.SeverityInfo,
 			Entity:         "bad-active/0",
-			EntityKind:     citizen.EntityKindUnit,
-			Owner:          citizen.OwnerCharmAuthor,
+			EntityKind:     advisor.EntityKindUnit,
+			Owner:          advisor.OwnerCharmAuthor,
 			Summary:        "Active unit carries non-empty msg",
 			Recommendation: "Clear the active-status message.",
-			ProtocolRef:    "protocol://citizenship/4c#status/active-empty-msg",
+			ProtocolRef:    "protocol://advisor/4c#status/active-empty-msg",
 		},
 	}
 }
@@ -203,7 +203,7 @@ func TestFormatTableGolden(t *stdtesting.T) {
 type tableFormatGoldenSuite struct{}
 
 func (s *tableFormatGoldenSuite) TestGolden(c *tc.C) {
-	restore := citizen.SetTableFormatTestOverrides(
+	restore := advisor.SetTableFormatTestOverrides(
 		func() time.Time { return tableFixedNow },
 		false, // color off
 		"",    // empty model -> "<unknown>"
@@ -211,7 +211,7 @@ func (s *tableFormatGoldenSuite) TestGolden(c *tc.C) {
 	defer restore()
 
 	var buf bytes.Buffer
-	err := citizen.FormatTable(&buf, sampleFindingsWithSince())
+	err := advisor.FormatTable(&buf, sampleFindingsWithSince())
 	c.Assert(err, tc.ErrorIsNil)
 
 	expected := tableGoldenExpected()
@@ -224,7 +224,7 @@ func (s *tableFormatGoldenSuite) TestGolden(c *tc.C) {
 
 // TestFormatTableEmpty pins the three-line empty-state panel: no
 // table area follows. The second content line ends in the checkmark
-// "all units are good citizens" affirmation.
+// "all units look good" affirmation.
 func TestFormatTableEmpty(t *stdtesting.T) {
 	tc.Run(t, &tableFormatEmptySuite{})
 }
@@ -232,7 +232,7 @@ func TestFormatTableEmpty(t *stdtesting.T) {
 type tableFormatEmptySuite struct{}
 
 func (s *tableFormatEmptySuite) TestEmpty(c *tc.C) {
-	restore := citizen.SetTableFormatTestOverrides(
+	restore := advisor.SetTableFormatTestOverrides(
 		func() time.Time { return tableFixedNow },
 		false,
 		"",
@@ -240,7 +240,7 @@ func (s *tableFormatEmptySuite) TestEmpty(c *tc.C) {
 	defer restore()
 
 	var buf bytes.Buffer
-	err := citizen.FormatTable(&buf, []citizen.Finding{})
+	err := advisor.FormatTable(&buf, []advisor.Finding{})
 	c.Assert(err, tc.ErrorIsNil)
 
 	expected := tableEmptyExpected()
@@ -250,7 +250,7 @@ func (s *tableFormatEmptySuite) TestEmpty(c *tc.C) {
 	}
 	c.Check(buf.String(), tc.Equals, expected)
 	// Sanity: empty state contains the checkmark and no table header.
-	c.Check(strings.Contains(buf.String(), "✓ all units are good citizens"), tc.IsTrue)
+	c.Check(strings.Contains(buf.String(), "✓ all units look good"), tc.IsTrue)
 	c.Check(strings.Contains(buf.String(), "SEV"), tc.IsFalse)
 }
 
@@ -259,7 +259,7 @@ func (s *tableFormatEmptySuite) TestEmpty(c *tc.C) {
 // 78-column inner area and 2-column margins on each side.
 func tableGoldenExpected() string {
 	// Panel borders are exactly 78 inner chars between the corners.
-	topBorder := "┌─ juju citizenship report " + strings.Repeat("─", 52) + "┐\n"
+	topBorder := "┌─ juju advisor report " + strings.Repeat("─", 56) + "┐\n"
 	bottomBorder := "└" + strings.Repeat("─", 78) + "┘\n"
 
 	// Inner usable width = 78 - 2*2 (margins) = 74.
@@ -331,7 +331,7 @@ func tableGoldenExpected() string {
 // three content lines, no table area, no trailing newline beyond the
 // bottom border.
 func tableEmptyExpected() string {
-	topBorder := "┌─ juju citizenship report " + strings.Repeat("─", 52) + "┐\n"
+	topBorder := "┌─ juju advisor report " + strings.Repeat("─", 56) + "┐\n"
 	bottomBorder := "└" + strings.Repeat("─", 78) + "┘\n"
 	innerPad := func(body string) string {
 		visible := len([]rune(body))
@@ -342,7 +342,7 @@ func tableEmptyExpected() string {
 		return "│  " + body + strings.Repeat(" ", pad) + "  │\n"
 	}
 	line1 := innerPad("model: <unknown>" + strings.Repeat(" ", 74-16-17) + "scanned: 13:54:21")
-	line2 := innerPad("findings: 0   ✓ all units are good citizens")
+	line2 := innerPad("findings: 0   ✓ all units look good")
 	return topBorder + line1 + line2 + bottomBorder
 }
 

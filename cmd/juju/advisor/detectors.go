@@ -1,7 +1,7 @@
 // Copyright 2026 Canonical Ltd.
 // Licensed under the AGPLv3, see LICENCE file for details.
 
-package citizen
+package advisor
 
 import (
 	"context"
@@ -125,11 +125,11 @@ func runStatefulDetectors(
 // ----------------------------------------------------------------------
 
 const (
-	checkActiveWithMessage   = "active-with-message"
+	checkActiveWithMessage = "active-with-message"
 	// protocolActiveEmptyMsg cites the brief's §4c.2 Status protocol
-	// violation symptom enumerated at citizenship-observatory-brief.md:282
+	// violation symptom enumerated at advisor-brief.md:282
 	// ("`active` with a non-empty message").
-	protocolActiveEmptyMsg            = "protocol://citizenship/4c.2#active-with-message"
+	protocolActiveEmptyMsg            = "protocol://advisor/4c.2#active-with-message"
 	summaryActiveWithMessage          = "Unit reports 'active' with a non-empty status message."
 	recommendActiveWithMessageDefault = "Convention is that 'active' carries no message; the empty string is the visual signal of normal operation."
 )
@@ -180,9 +180,9 @@ const (
 	// line 275 establishes that 'blocked' = "explicit human action
 	// required" and line 283 enumerates "blocked with empty /
 	// unactionable message" as the canonical violation symptom.
-	protocolBlockedNoMessage           = "protocol://citizenship/4c.2#blocked-no-message"
-	summaryBlockedNoMessage            = "Unit is blocked without an actionable status message."
-	recommendBlockedNoMessageDefault   = "Blocked units MUST carry an actionable message identifying what human action is required. Update the charm's status-set on the blocked path to describe the unmet precondition (missing config, unmet relation, exhausted resource)."
+	protocolBlockedNoMessage         = "protocol://advisor/4c.2#blocked-no-message"
+	summaryBlockedNoMessage          = "Unit is blocked without an actionable status message."
+	recommendBlockedNoMessageDefault = "Blocked units MUST carry an actionable message identifying what human action is required. Update the charm's status-set on the blocked path to describe the unmet precondition (missing config, unmet relation, exhausted resource)."
 )
 
 // detectBlockedNoMessage emits a warning finding per unit whose
@@ -230,9 +230,9 @@ const (
 	checkCharmRevisionAging = "charm-revision-aging"
 	// protocolRevisionTrackChannel cites the brief's §4b inventory
 	// rather than §4c: charm-revision aging is an operator-hygiene
-	// signal in the 33-signal catalogue, not a citizenship-contract
-	// clause violation (Principle V uses "existing clause" loosely).
-	protocolRevisionTrackChannel       = "protocol://citizenship/4b#charm-revision-aging"
+	// signal in the 33-signal catalogue, not a protocol-clause
+	// violation (Principle V uses "existing clause" loosely).
+	protocolRevisionTrackChannel       = "protocol://advisor/4b#charm-revision-aging"
 	summaryCharmRevisionAging          = "Application is behind its tracked channel."
 	recommendCharmRevisionAgingDefault = "Run 'juju refresh <app>' to pick up the newer revision available on the tracked channel."
 )
@@ -274,7 +274,7 @@ const (
 	// line 275 establishes that 'blocked' = "explicit human action
 	// required". A prolonged blocked state is a §4c.2 derivation --
 	// the human action has gone unaddressed.
-	protocolBlockedBounded           = "protocol://citizenship/4c.2#blocked-bounded"
+	protocolBlockedBounded           = "protocol://advisor/4c.2#blocked-bounded"
 	summaryUnitBlockedStaleWarning   = "Unit has been blocked for over 24 hours."
 	summaryUnitBlockedStaleCritical  = "Unit has been blocked for over 7 days."
 	recommendUnitBlockedStaleDefault = "Investigate blocking condition: read the charm's hook message, check peer state, or determine whether operator intervention is required."
@@ -340,7 +340,7 @@ const (
 	// status enum semantics imply stability of the declared state.
 	// Rapid flips between workload statuses ("status churn") undermine
 	// the contract by making every status read potentially stale.
-	protocolStatusChurn         = "protocol://citizenship/4c.2#status-churn"
+	protocolStatusChurn         = "protocol://advisor/4c.2#status-churn"
 	summaryStatusChurn          = "Unit workload status is churning between values."
 	recommendStatusChurnDefault = "A unit that flips workload status repeatedly within minutes signals an indecisive reconciler. Audit the charm's status-set logic: check whether collect_unit_status emits different values across consecutive invocations, whether a precondition oscillates, or whether multiple handlers race to set conflicting states."
 
@@ -444,7 +444,7 @@ const (
 	// (brief line 277). Holding maintenance indefinitely violates the
 	// implicit "bounded" contract -- operators have no signal that the
 	// charm is actually idle vs actively working.
-	protocolStuckMaintenance         = "protocol://citizenship/4c.2#stuck-maintenance"
+	protocolStuckMaintenance         = "protocol://advisor/4c.2#stuck-maintenance"
 	summaryStuckMaintenance          = "Unit has held maintenance status without transition."
 	recommendStuckMaintenanceDefault = "Maintenance is for long-running but bounded work. A unit holding maintenance status without ever transitioning out signals either a stuck task, a charm that never sets a terminal status, or a misclassified state. Audit the reconciler: identify what should mark the work complete and transition out of maintenance, or move the message into the active/waiting state if the work was always idle."
 
@@ -530,7 +530,7 @@ const (
 	// protocol and drive the unit to error status. A unit observed in
 	// agent-status error within the recent window is a direct violation
 	// of that contract.
-	protocolHookError         = "protocol://citizenship/4c.1#hook-error"
+	protocolHookError         = "protocol://advisor/4c.1#hook-error"
 	summaryHookError          = "Unit hit an uncaught hook error recently."
 	recommendHookErrorDefault = "Hook failures interrupt the firing protocol (§4c.1). Inspect 'juju debug-log --include <unit>' and 'juju show-status-log --type=juju-unit <unit>' for the failing hook. Recover with 'juju resolve <unit>' after fixing the underlying charm bug."
 
@@ -661,9 +661,9 @@ const (
 	// protocol: teardown completeness is part of the firing-protocol
 	// contract. An entity stuck in Dying signals a teardown hook that
 	// never returns success.
-	protocolEntityStuckDying        = "protocol://citizenship/4c.1#entity-stuck-dying"
-	summaryEntityStuckDyingWarning  = "Entity has been in Dying state for over 5 minutes."
-	summaryEntityStuckDyingCritical = "Entity has been in Dying state for over 1 hour."
+	protocolEntityStuckDying         = "protocol://advisor/4c.1#entity-stuck-dying"
+	summaryEntityStuckDyingWarning   = "Entity has been in Dying state for over 5 minutes."
+	summaryEntityStuckDyingCritical  = "Entity has been in Dying state for over 1 hour."
 	recommendEntityStuckDyingDefault = "An entity that lingers in Dying typically signals a failing teardown hook (relation-departed/relation-broken/stop). Inspect the unit's debug-log and recent agent-status history. Avoid 'juju resolve --force' on the broken hook -- it can leave substrate resources orphaned. Fix the teardown path in charm code, then 'juju resolve' to retry."
 
 	entityDyingWarningThreshold  = 5 * time.Minute
@@ -751,7 +751,7 @@ const (
 	// protocolModelSuspendedCredential cites the brief's §4b operational
 	// hygiene inventory: a suspended model represents a model-wide
 	// outage that silently halts all workload commands.
-	protocolModelSuspendedCredential         = "protocol://citizenship/4b#model-suspended-credential"
+	protocolModelSuspendedCredential         = "protocol://advisor/4b#model-suspended-credential"
 	summaryModelSuspendedCredential          = "Model is suspended -- cloud credential validation failed."
 	recommendModelSuspendedCredentialDefault = "All workload commands will hang indefinitely until the cloud credential is restored. Rotate the credential and re-attach: 'juju add-credential', 'juju update-credential', or contact the cloud admin if a service principal expired. The --force flag does NOT bypass model suspension."
 )

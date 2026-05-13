@@ -1,13 +1,13 @@
-# Feature Specification: `juju citizen` operator CLI command
+# Feature Specification: `juju advisor` operator CLI command
 
-**Feature Branch**: `003-juju-citizen-cli`
+**Feature Branch**: `003-juju-advisor-cli`
 
 **Created**: 2026-05-13
 
 **Status**: Draft
 
-**Input**: User description: "Client-side `juju citizen` CLI command surfacing
-three citizenship signals (active-with-message, charm-revision aging, unit
+**Input**: User description: "Client-side `juju advisor` CLI command surfacing
+three advisor signals (active-with-message, charm-revision aging, unit
 blocked >24h) with hybrid/yaml/json output, severity filter, model override,
 and fixture-backed AI-enrichment."
 
@@ -27,7 +27,7 @@ prototype iteration".
 
 - Q: When the underlying `Client.Status` call returns an error
   (controller unreachable, network blip, permission revoked mid-call),
-  how should `juju citizen` behave? → A: Hard error -- exit non-zero
+  how should `juju advisor` behave? → A: Hard error -- exit non-zero
   with a stderr line `ERROR: status fetch failed: <wrapped err>` and no
   stdout. Matches FR-018 verbatim and aligns with the behavior of
   `juju status` itself on the same failure.
@@ -52,18 +52,18 @@ An operator has been handed a model they did not deploy and have not
 recently touched. They want a one-screen answer to the question
 "is anything degraded?" without scrolling through `juju status`.
 
-They run `juju citizen` and receive a sorted list of findings -- one
+They run `juju advisor` and receive a sorted list of findings -- one
 header line per finding, plus 1-3 arrow-prefixed notes summarising the
 issue and what to do about it. Critical findings appear first; info-level
 findings appear last. If the model is clean, the command prints
-"No citizenship findings." and exits 0.
+"No findings." and exits 0.
 
 **Why this priority**: This is the entire reason the command exists. The
 operator-facing read-only view is the MVP; everything else either supports
 it or follows it.
 
 **Independent Test**: Bootstrap a controller, deploy a charm whose unit
-reports `active` with the message "ready", run `juju citizen`. The
+reports `active` with the message "ready", run `juju advisor`. The
 expected outcome is exactly one finding header at info severity for the
 unit, with one or more arrow notes that name the convention violated and
 the recommended action.
@@ -71,12 +71,12 @@ the recommended action.
 **Acceptance Scenarios**:
 
 1. **Given** a model containing zero degradations, **When** the operator
-   runs `juju citizen`, **Then** stdout is exactly `No citizenship
+   runs `juju advisor`, **Then** stdout is exactly `No compliance
    findings.` followed by a newline, and the exit code is 0.
 2. **Given** a model with one unit reporting `active` with a non-empty
    workload status message, one application whose `CanUpgradeTo` is
    non-empty, and one unit in `blocked` state for more than 24 hours,
-   **When** the operator runs `juju citizen`, **Then** stdout contains
+   **When** the operator runs `juju advisor`, **Then** stdout contains
    exactly three finding headers, ordered critical -> warning -> info
    (or warning -> info if no critical), each followed by 1-3 arrow notes.
 3. **Given** any successful run, **When** stderr is inspected, **Then**
@@ -88,14 +88,14 @@ the recommended action.
 
 An operator (or a CI script, or a Slack-bot bridge) wants machine-readable
 findings so they can be persisted, alerted on, or correlated with other
-signals. They run `juju citizen -o yaml` or `juju citizen -o json` and
+signals. They run `juju advisor -o yaml` or `juju advisor -o json` and
 receive a structured list of records with stable field names.
 
 **Why this priority**: Without this, the command is a human-only tool and
 cannot feed the future observatory dashboards. Tooling integration is the
 second-largest use case.
 
-**Independent Test**: Run `juju citizen -o json` against a staged model
+**Independent Test**: Run `juju advisor -o json` against a staged model
 known to have three findings; pipe to `jq '. | length'`. The expected
 outcome is `3`. Run `jq '.[0] | keys | sort'`. The expected outcome is a
 sorted array of exactly the eight field names defined under "Key Entities".
@@ -103,10 +103,10 @@ sorted array of exactly the eight field names defined under "Key Entities".
 **Acceptance Scenarios**:
 
 1. **Given** a staged model with three findings, **When** the operator
-   runs `juju citizen -o yaml`, **Then** stdout is a YAML list of three
+   runs `juju advisor -o yaml`, **Then** stdout is a YAML list of three
    mappings, each carrying all eight fields specified for a Finding, with
    no extra fields.
-2. **Given** the same model, **When** the operator runs `juju citizen
+2. **Given** the same model, **When** the operator runs `juju advisor
    -o json`, **Then** stdout is a single JSON array of three objects with
    the same field set as the YAML output.
 3. **Given** structured output, **When** `severity` is inspected, **Then**
@@ -119,7 +119,7 @@ sorted array of exactly the eight field names defined under "Key Entities".
 ### User Story 3 - Operator inspects a model other than the current one (Priority: P2)
 
 An operator has multiple models on a controller. They want to check the
-citizenship state of a model without first switching their working model
+compliance state of a model without first switching their working model
 context, because they are mid-investigation in another model and do not
 want to lose state.
 
@@ -127,18 +127,18 @@ want to lose state.
 command (`juju status`, `juju config`, `juju show-application`) accepts
 `-m`/`--model`. Omitting it would feel broken on day one.
 
-**Independent Test**: With current model A, run `juju citizen -m B`
+**Independent Test**: With current model A, run `juju advisor -m B`
 against a controller hosting models A and B with known different finding
 sets. The output reflects model B's state, not A's.
 
 **Acceptance Scenarios**:
 
 1. **Given** the operator's current model is A and model B has one
-   finding, **When** they run `juju citizen -m B`, **Then** the output
+   finding, **When** they run `juju advisor -m B`, **Then** the output
    reflects model B's single finding and the operator's current model
    context remains A.
 2. **Given** the operator names a model the controller does not host,
-   **When** they run `juju citizen -m nonexistent`, **Then** the command
+   **When** they run `juju advisor -m nonexistent`, **Then** the command
    exits non-zero with a stderr message that names the missing model.
 
 ---
@@ -153,21 +153,21 @@ sprint or sooner.
 output is already severity-sorted; filtering is a refinement.
 
 **Independent Test**: Against a model known to have all three signals,
-run `juju citizen --severity=warning,critical`. The info-severity finding
+run `juju advisor --severity=warning,critical`. The info-severity finding
 is omitted; the warning and (if present) critical findings remain.
 
 **Acceptance Scenarios**:
 
 1. **Given** a model with findings at info, warning, and critical
-   severity, **When** the operator runs `juju citizen
+   severity, **When** the operator runs `juju advisor
    --severity=critical`, **Then** only critical findings appear and the
    exit code is 0 (the command is not a check, so absence of matching
    findings is not an error).
-2. **Given** the same model, **When** the operator runs `juju citizen
+2. **Given** the same model, **When** the operator runs `juju advisor
    --severity=warning,critical`, **Then** only warning and critical
    findings appear.
 3. **Given** an invalid severity string, **When** the operator runs
-   `juju citizen --severity=bogus`, **Then** the command exits non-zero
+   `juju advisor --severity=bogus`, **Then** the command exits non-zero
    with a stderr message naming the valid values.
 
 ---
@@ -176,14 +176,14 @@ is omitted; the warning and (if present) critical findings remain.
 
 An operator is on a restricted network, or distrusts AI-generated text,
 or simply wants to verify what the underlying detector said before any
-enrichment was applied. They run `juju citizen --no-ai` to suppress AI
+enrichment was applied. They run `juju advisor --no-ai` to suppress AI
 enrichment of recommendation text.
 
 **Why this priority**: Constitutionally required (AI must be optional, per
 Principle VI). Functionally, the hand-written recommendation is shorter
 and considered authoritative; the AI version is a presentation layer.
 
-**Independent Test**: Run `juju citizen` and `juju citizen --no-ai`
+**Independent Test**: Run `juju advisor` and `juju advisor --no-ai`
 against the same staged model. The header line, severity, owner, entity,
 check_id, and protocol_ref of each finding are byte-identical; only the
 recommendation differs.
@@ -195,7 +195,7 @@ recommendation differs.
    finding identities (check_id + entity) is identical between the two
    runs, and within each finding only the recommendation text differs.
 2. **Given** the AI fixture file is missing or unreadable, **When** the
-   operator runs `juju citizen` (no `--no-ai`), **Then** the command
+   operator runs `juju advisor` (no `--no-ai`), **Then** the command
    completes successfully using the terse hand-written recommendations
    and emits a single stderr warning indicating enrichment was skipped.
 
@@ -204,7 +204,7 @@ recommendation differs.
 ### Edge Cases
 
 - A model containing zero applications and zero units returns "No
-  citizenship findings." and exits 0.
+  findings." and exits 0.
 - A unit whose status is `active` with whitespace-only message (`"   "`)
   is treated as a non-empty message and triggers Signal 1.
 - A unit whose `since` timestamp lies in the future (clock skew between
@@ -235,7 +235,7 @@ recommendation differs.
 
 **Command surface**
 
-- **FR-001**: The `juju citizen` command MUST be invocable with no
+- **FR-001**: The `juju advisor` command MUST be invocable with no
   arguments and operate against the operator's current model context.
 - **FR-002**: The command MUST accept `-m <model>` / `--model <model>` to
   override the model context for this invocation.
@@ -282,7 +282,7 @@ recommendation differs.
   sorted by severity (critical, warning, info) and then by entity name
   within a severity.
 - **FR-011**: When no findings remain after filtering, stdout MUST be
-  exactly `No citizenship findings.\n` and the exit code MUST be 0.
+  exactly `No findings.\n` and the exit code MUST be 0.
 - **FR-012**: In yaml and json formats, output MUST be a single
   list/array whose items are records carrying all eight fields defined
   under Key Entities. Field names MUST be byte-identical across both
@@ -295,7 +295,7 @@ recommendation differs.
 
 - **FR-014**: With AI enrichment enabled, the `recommendation` field MUST
   be populated from the fixture file
-  `cmd/juju/citizen/testdata/findings.json` keyed by check_id. With
+  `cmd/juju/advisor/testdata/findings.json` keyed by check_id. With
   `--no-ai` the field MUST carry the terse hand-written recommendation
   that lives in the detector definition.
 - **FR-015**: AI enrichment MUST modify only the `recommendation` field.
@@ -325,7 +325,7 @@ recommendation differs.
 
 ### Key Entities *(include if feature involves data)*
 
-- **Finding**: The atomic unit of citizenship-observatory output. Eight
+- **Finding**: The atomic unit of advisor output. Eight
   fields, all mandatory:
   - `check_id` (string): stable detector identifier, e.g.,
     `active-with-message`, `charm-revision-aging`, `unit-blocked-stale`.
@@ -339,15 +339,15 @@ recommendation differs.
     violation.
   - `recommendation` (string, multi-line): action to take. Hand-written
     text under `--no-ai`; fixture-loaded text by default.
-  - `protocol_ref` (string): citation of the citizenship-contract clause
-    being violated, e.g., `protocol://citizenship/4c#hook-execution`.
+  - `protocol_ref` (string): citation of the advisor protocol-contract clause
+    being violated, e.g., `protocol://advisor/4c#hook-execution`.
 - **Detector**: A predicate that consumes the controller's status
   response and emits zero or more Findings. v1 ships exactly three
   detectors corresponding to Signals 1-3. Each detector owns its
   `check_id`, `severity` (or severity selector for Signal 3), `owner`,
   hand-written `summary`, hand-written `recommendation`, and
   `protocol_ref`.
-- **Fixture**: A JSON file at `cmd/juju/citizen/testdata/findings.json`
+- **Fixture**: A JSON file at `cmd/juju/advisor/testdata/findings.json`
   mapping `check_id` to an AI-style recommendation string. v1 ships
   with three entries -- one per detector. The fixture stands in for a
   live LLM call; the production design is out of scope for this
@@ -358,7 +358,7 @@ recommendation differs.
 ### Measurable Outcomes
 
 - **SC-001**: An operator unfamiliar with a model can identify all
-  current citizenship findings, ordered by severity, in a single
+  current findings, ordered by severity, in a single
   command invocation that completes within the time `juju status`
   completes against the same model (no perceptible additional latency).
 - **SC-002**: Against a model staged to contain exactly one instance of
@@ -367,7 +367,7 @@ recommendation differs.
 - **SC-003**: The structured-output field set is stable: any addition,
   removal, or rename of a Finding field between the YAML and JSON
   emitters MUST fail a contract test before merge.
-- **SC-004**: Downstream tooling consuming `juju citizen -o json` can
+- **SC-004**: Downstream tooling consuming `juju advisor -o json` can
   group findings by `severity` and by `owner` with no transformation of
   field values (both enums use the exact strings the constitution
   defines).
@@ -376,7 +376,7 @@ recommendation differs.
   verifiable by diffing the two outputs and observing diffs scoped to
   `recommendation` only.
 - **SC-006**: A model with no degradations produces exactly the literal
-  string `No citizenship findings.` followed by a newline on stdout and
+  string `No findings.` followed by a newline on stdout and
   nothing on stderr.
 - **SC-007**: Severity filter narrows the output deterministically:
   `--severity=critical` against a model with no critical findings
@@ -400,7 +400,7 @@ the spec needs revision before plan.
 - The fixture file ships inside the binary (bundled at build time, not
   fetched at runtime). It is not user-configurable in v1.
 - The protocol reference URIs are stable strings derived from the
-  citizenship contract document; they are not resolved or fetched by
+  advisor protocol document; they are not resolved or fetched by
   the CLI in v1.
 - The command is invocable by any user with model read permission. No
   new permission gate is introduced.
@@ -408,10 +408,10 @@ the spec needs revision before plan.
   audience and the YAML/JSON forms are opt-in for pipelines.
 - Severity-filter parsing is permissive on whitespace
   (`--severity=critical, warning` works) but strict on values.
-- The command name `juju citizen` is final for v1; renaming is a v2
+- The command name `juju advisor` is final for v1; renaming is a v2
   concern.
-- "Citizenship contract" refers to the 8-protocol contract documented in
-  Section 4c of `citizenship-observatory-brief.md`. Each detector's
+- "Advisor protocol" refers to the 8-protocol contract documented in
+  Section 4c of `advisor-brief.md`. Each detector's
   `protocol_ref` cites a clause from that document.
 
 ## Out of Scope
@@ -427,6 +427,6 @@ captured for traceability and to prevent scope creep, not as commitments.
 - Integration with or modification of `juju status` output.
 - Operator suppression / acknowledgement of findings.
 - The remaining ~30 signals catalogued in
-  `citizenship-observatory-brief.md` §4b.
+  `advisor-brief.md` §4b.
 - Cross-model relation findings.
 - K8s-specific signals (the three v1 detectors are substrate-agnostic).

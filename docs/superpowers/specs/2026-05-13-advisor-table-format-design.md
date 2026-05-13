@@ -1,17 +1,17 @@
-# `juju citizen` pretty default table format — design
+# `juju advisor` pretty default table format — design
 
 **Date**: 2026-05-13
 **Status**: Approved via brainstorming dialogue. Implementation: today.
-**Scope**: Replace `juju citizen`'s default output with a dashboard-panel + 6-column table. Rename the existing arrow-notes format to `--format=verbose`.
+**Scope**: Replace `juju advisor`'s default output with a dashboard-panel + 6-column table. Rename the existing arrow-notes format to `--format=verbose`.
 
 ## Goal
 
-A glanceable, demo-grade default for `juju citizen`. Operators see at-a-glance: model context, finding counts by severity and owner, and one row per finding with severity color, entity, owner, check, age, and human summary.
+A glanceable, demo-grade default for `juju advisor`. Operators see at-a-glance: model context, finding counts by severity and owner, and one row per finding with severity color, entity, owner, check, age, and human summary.
 
 ## Visual contract
 
 ```
-┌─ juju citizen ──────────────────────────────────────────────────────┐
+┌─ juju advisor ──────────────────────────────────────────────────────┐
 │  model: norma-demo                              scanned: 13:54:21  │
 │  findings: 5   ● 1 critical   ▲ 3 warning   ◆ 1 info               │
 │  owners:       charm-author 5  •  operator 0  •  platform 0        │
@@ -33,18 +33,18 @@ A glanceable, demo-grade default for `juju citizen`. Operators see at-a-glance: 
 
 **Sort**: severity rank asc → age desc within severity → entity asc → check_id asc.
 
-**Empty state**: dashboard panel renders with `findings: 0` and a `✓ all units are good citizens` line; no table area.
+**Empty state**: dashboard panel renders with `findings: 0` and a `✓ all units are compliant charms` line; no table area.
 
 **Color toggle**: color ON by default; `--no-color` flag disables ANSI escapes (glyphs remain). TTY autodetect deferred to v0.1.
 
 ## Format flag
 
 ```
-juju citizen                    → table (new default)
-juju citizen --format=table     → table (explicit)
-juju citizen --format=verbose   → existing arrow-notes hybrid (renamed)
-juju citizen --format=yaml      → YAML list (unchanged)
-juju citizen --format=json      → JSON array (unchanged)
+juju advisor                    → table (new default)
+juju advisor --format=table     → table (explicit)
+juju advisor --format=verbose   → existing arrow-notes hybrid (renamed)
+juju advisor --format=yaml      → YAML list (unchanged)
+juju advisor --format=json      → JSON array (unchanged)
 ```
 
 `--format=hybrid` is removed. Single-release breaking change; release notes call it out.

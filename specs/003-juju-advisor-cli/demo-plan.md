@@ -1,36 +1,36 @@
-# Demo plan: `juju citizen` against `juju-norma-k8s`
+# Demo plan: `juju advisor` against `juju-norma-k8s`
 
-**Purpose**: live, code-driven demonstration of the citizenship
-observatory. We start from a textbook-good-citizen charm and iterate
-through one *deliberate* bad-citizenship regression at a time. Each
+**Purpose**: live, code-driven demonstration of the advisor protocol
+observatory. We start from a textbook-compliant-charm charm and iterate
+through one *deliberate* bad-compliance regression at a time. Each
 iteration is a single-line (or near-single-line) edit to `src/charm.py`,
-followed by a rebuild + refresh, followed by a `juju citizen` run that
+followed by a rebuild + refresh, followed by a `juju advisor` run that
 detects exactly the regression we introduced.
 
 ## Why this charm
 
 `juju-norma-k8s` is a Canonical-authored calibration charm that
-*intentionally* follows every well-known citizenship convention:
+*intentionally* follows every well-known compliance convention:
 
 - `collect_unit_status` event handler (canonical ops pattern).
 - `event.add_status(ops.ActiveStatus())` with empty message (textbook
-  good citizen, §4c.2 of the citizenship brief).
+  compliant charm, §4c.2 of the protocol brief).
 - `BlockedStatus` is set only with an actionable message
   (`BlockedStatus(error_msg)` on config-validation failure, etc.) —
   matches §4c.2 "blocked MUST carry actionable message".
 - `WaitingStatus("Waiting for Pebble")` — non-empty message on a
   non-`active` state is convention-compliant.
 
-So when we run `juju citizen` against the unmodified charm, the expected
-output is `No citizenship findings.` That is the **baseline frame** for
-every iteration: if citizen ever fires while the charm is unmodified,
-either citizen has a false-positive or the charm itself drifted.
+So when we run `juju advisor` against the unmodified charm, the expected
+output is `No findings.` That is the **baseline frame** for
+every iteration: if advisor ever fires while the charm is unmodified,
+either advisor has a false-positive or the charm itself drifted.
 
 ## Tooling state (verified 2026-05-13)
 
 | Tool | Path | Status |
 |---|---|---|
-| `juju` (with `citizen`) | `~/go/bin/juju` | ✅ rebuilt via `make juju` |
+| `juju` (with `advisor`) | `~/go/bin/juju` | ✅ rebuilt via `make juju` |
 | `uv` | `~/.local/bin/uv` | ✅ |
 | `charmcraft` | — | ❌ needs `sudo snap install charmcraft --classic` |
 | `rockcraft` | — | ❌ needs `sudo snap install rockcraft --classic` |
@@ -50,9 +50,9 @@ five steps so the demo cadence stays recognizable:
    build because uv caches dependencies).
 3. **Refresh** (`juju refresh juju-norma-k8s --path
    ./juju-norma-k8s_ubuntu-24.04-amd64.charm`).
-4. **Run `juju citizen`** — expect *exactly* the finding the edit
+4. **Run `juju advisor`** — expect *exactly* the finding the edit
    targets.
-5. **Revert** (`git checkout src/charm.py`) — citizen returns to clean,
+5. **Revert** (`git checkout src/charm.py`) — advisor returns to clean,
    showing the symptom is repairable.
 
 ### Iteration 0 — clean baseline
@@ -62,11 +62,11 @@ five steps so the demo cadence stays recognizable:
 ```text
 $ juju status
 juju-norma-k8s/0   active   idle   ...
-$ juju citizen
-No citizenship findings.
+$ juju advisor
+No findings.
 ```
 
-This proves the charm is a good citizen and citizen is not flagging it
+This proves the charm is a compliant charm and advisor is not flagging it
 spuriously. **Drop-out point**: if iteration 0 doesn't pass, we stop
 and diagnose before introducing any violations.
 
@@ -82,15 +82,15 @@ wild — captured by the brief at line 282.
 **Diff**:
 
 ```python
-# BEFORE (charm.py:400) — good citizen, empty message
+# BEFORE (charm.py:400) — compliant charm, empty message
 event.add_status(ops.ActiveStatus())
 
-# AFTER — bad citizen, helpful-looking but convention-breaking
+# AFTER — misbehaving charm, helpful-looking but convention-breaking
 port = int(self.config.get("calibration-int", norma.DEFAULT_PORT))
 event.add_status(ops.ActiveStatus(f"serving on port {port}"))
 ```
 
-**Expected `juju citizen` output**:
+**Expected `juju advisor` output**:
 
 ```text
 INFO     juju-norma-k8s/0 [active-with-message]
@@ -102,7 +102,7 @@ INFO     juju-norma-k8s/0 [active-with-message]
 `active: serving on port 8080`, which to an unfamiliar operator looks
 **helpful**. Operators routinely write status parsers that latch onto
 the message field. The convention violation is invisible without
-citizen. This is the strongest single-shot demonstration of the
+advisor. This is the strongest single-shot demonstration of the
 observatory's value.
 
 ### Iteration 2 — Signal 1 stacked: also fire on app-level status
@@ -126,11 +126,11 @@ event.add_status(ops.ActiveStatus(f"v{version}"))
 
 **Expected behavior**: this surfaces on the application's workload
 status, not a unit's. The v1 detector targets units only
-(`entity_kind: unit`). So citizen WILL NOT fire on this alone.
+(`entity_kind: unit`). So advisor WILL NOT fire on this alone.
 
 **Demo move**: use this iteration to **identify a known gap** in v1.
 The audience sees `juju status` show `juju-norma-k8s   active   v1.2.3`
-on the application row and asks "shouldn't citizen flag this?" — yes,
+on the application row and asks "shouldn't advisor flag this?" — yes,
 in a future iteration where the detector covers `EntityKind.application`
 for the active-with-message signal. We add a follow-up TODO.
 
@@ -147,13 +147,13 @@ charm correctly rejects with a blocked + actionable message:
 `calibration-int must be between 1 and 65535, got 70000`.
 
 **Expected behavior immediately**: the charm goes blocked with the
-actionable message. **citizen DOES NOT fire** — because blocked with an
-actionable message is exemplary citizenship by §4c.2 (line 275 of the
+actionable message. **advisor DOES NOT fire** — because blocked with an
+actionable message is exemplary compliance by §4c.2 (line 275 of the
 brief).
 
-**Demo move**: this iteration **proves the converse** — citizen does
+**Demo move**: this iteration **proves the converse** — advisor does
 not whine about blocked states that are correctly bounded and
-actionable. The audience learns that citizen is specifically
+actionable. The audience learns that advisor is specifically
 calibrated, not just "anything yellow is a finding".
 
 To trigger the actual Signal 3 (`unit-blocked-stale`, >24h), we'd need
@@ -163,8 +163,8 @@ the demo window. We acknowledge and skip.
 ### Iteration 4 — clean-up
 
 Revert all charm.py edits, set `calibration-int` back to default, run
-`juju citizen` one last time. Output is `No citizenship findings.` —
-the charm is again a textbook good citizen. The demo closes by showing
+`juju advisor` one last time. Output is `No findings.` —
+the charm is again a textbook compliant charm. The demo closes by showing
 the cycle is symmetric: detect → fix → re-verify.
 
 ## Tooling steps (per iteration after iteration 0)
@@ -185,8 +185,8 @@ juju status --watch 2s   # ctrl-c once the unit settles
 
 # 5. Demo
 juju status
-juju citizen
-juju citizen --format=json | jq .
+juju advisor
+juju advisor --format=json | jq .
 
 # 6. Revert
 git checkout src/charm.py
@@ -210,15 +210,15 @@ doesn't change between iterations). After iteration 0, only the charm
 
 ## What we are NOT doing
 
-- We are not editing `juju citizen` between iterations. The same
+- We are not editing `juju advisor` between iterations. The same
   detector code runs against every state.
 - We are not editing `src/norma.py` or `workload/main.go`. The
   workload's Pebble layer and HTTP behavior are unchanged. Every
-  citizenship signal is a Juju-protocol-level artifact, not a
+  advisor signal is a Juju-protocol-level artifact, not a
   workload-internal one.
 - We are not exercising the charm's `set-status` action to fake
   violations. The whole point is that the **code itself** is the
-  citizen — actions could mask the simulation.
+  advisor — actions could mask the simulation.
 - We are not stacking violations in iteration 1 — keep the cadence
   one-violation-per-iteration so each detector's signal is
   cleanly attributable.

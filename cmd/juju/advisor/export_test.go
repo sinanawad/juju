@@ -1,7 +1,7 @@
 // Copyright 2026 Canonical Ltd.
 // Licensed under the AGPLv3, see LICENCE file for details.
 
-package citizen
+package advisor
 
 import (
 	"context"
@@ -14,17 +14,17 @@ import (
 	"github.com/juju/juju/cmd/modelcmd"
 )
 
-// NewCitizenCommandForTest returns a wrapped citizen command with the
+// NewAdvisorCommandForTest returns a wrapped advisor command with the
 // given client store, status API, and clock injected. The status API
 // is returned by apiFunc, mirroring the block.NewListCommandForTest
 // pattern.
-func NewCitizenCommandForTest(
+func NewAdvisorCommandForTest(
 	store jujuclient.ClientStore,
 	api statusAPI,
 	apiErr error,
 	ck clock.Clock,
 ) cmd.Command {
-	c := &citizenCommand{
+	c := &advisorCommand{
 		clock: ck,
 	}
 	c.apiFunc = func(_ context.Context) (statusAPI, error) {

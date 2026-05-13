@@ -70,7 +70,7 @@ schema change handled by adding constants and a corresponding detector.
 
 ### `Finding`
 
-The single atomic output of the citizenship observatory.
+The single atomic output of the advisor protocol observatory.
 
 ```go
 type Finding struct {
@@ -181,7 +181,7 @@ mean the detector's hand-written recommendation is preserved.
                  +----------------------------+
 ```
 
-**No state crosses invocation boundaries.** Each `juju citizen` run is
+**No state crosses invocation boundaries.** Each `juju advisor` run is
 a fresh read.
 
 ## Synthetic test fixtures (informative, not committed in M0/M1)

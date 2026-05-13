@@ -20,12 +20,12 @@ import (
 	jujucmd "github.com/juju/juju/cmd"
 	"github.com/juju/juju/cmd/cmd"
 	"github.com/juju/juju/cmd/juju/action"
+	"github.com/juju/juju/cmd/juju/advisor"
 	"github.com/juju/juju/cmd/juju/application"
 	"github.com/juju/juju/cmd/juju/backups"
 	"github.com/juju/juju/cmd/juju/block"
 	"github.com/juju/juju/cmd/juju/caas"
 	"github.com/juju/juju/cmd/juju/charmhub"
-	"github.com/juju/juju/cmd/juju/citizen"
 	"github.com/juju/juju/cmd/juju/cloud"
 	"github.com/juju/juju/cmd/juju/controller"
 	"github.com/juju/juju/cmd/juju/crossmodel"
@@ -460,8 +460,8 @@ func registerCommands(r commandRegistry) {
 	r.Register(block.NewListCommand())
 	r.Register(block.NewEnableCommand())
 
-	// Citizenship observatory.
-	r.Register(citizen.NewCitizenCommand())
+	// Operator advisor.
+	r.Register(advisor.NewAdvisorCommand())
 
 	// Manage storage
 	r.Register(storage.NewAddCommand())

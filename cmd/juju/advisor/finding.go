@@ -1,9 +1,24 @@
 // Copyright 2026 Canonical Ltd.
 // Licensed under the AGPLv3, see LICENCE file for details.
 
-package citizen
+package advisor
 
-import "time"
+import (
+	"strings"
+	"time"
+)
+
+// entityRoot returns the application portion of an entity name. A unit
+// entity like "core/0" returns "core"; an application entity like
+// "core" returns itself unchanged. Used by the table renderer and the
+// sort comparator to keep all findings on the same application
+// contiguous.
+func entityRoot(entity string) string {
+	if i := strings.IndexByte(entity, '/'); i >= 0 {
+		return entity[:i]
+	}
+	return entity
+}
 
 // Severity is the calibrated impact level of a Finding. The set of
 // values is fixed by constitution Principle II; detectors MUST NOT
@@ -53,7 +68,7 @@ const (
 	EntityKindModel       EntityKind = "model"
 )
 
-// Finding is the atomic output of the citizenship observatory. The
+// Finding is the atomic output of the advisor. The
 // eight required fields are the schema enforced at the detection-layer
 // boundary; missing any of them is a bug. Since is optional and set
 // only by stateful detectors to record when the violation began;
@@ -91,21 +106,21 @@ func newFinding(
 ) Finding {
 	switch {
 	case checkID == "":
-		panic("citizen: Finding has empty check_id")
+		panic("advisor: Finding has empty check_id")
 	case severity == "":
-		panic("citizen: Finding has empty severity")
+		panic("advisor: Finding has empty severity")
 	case entity == "":
-		panic("citizen: Finding has empty entity")
+		panic("advisor: Finding has empty entity")
 	case entityKind == "":
-		panic("citizen: Finding has empty entity_kind")
+		panic("advisor: Finding has empty entity_kind")
 	case owner == "":
-		panic("citizen: Finding has empty owner")
+		panic("advisor: Finding has empty owner")
 	case summary == "":
-		panic("citizen: Finding has empty summary")
+		panic("advisor: Finding has empty summary")
 	case recommendation == "":
-		panic("citizen: Finding has empty recommendation")
+		panic("advisor: Finding has empty recommendation")
 	case protocolRef == "":
-		panic("citizen: Finding has empty protocol_ref")
+		panic("advisor: Finding has empty protocol_ref")
 	}
 	return Finding{
 		CheckID:        checkID,
