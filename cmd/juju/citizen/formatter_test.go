@@ -253,7 +253,7 @@ func (s *tableFormatEmptySuite) TestEmpty(c *tc.C) {
 // 78-column inner area and 2-column margins on each side.
 func tableGoldenExpected() string {
 	// Panel borders are exactly 78 inner chars between the corners.
-	topBorder := "┌─ juju citizen " + strings.Repeat("─", 63) + "┐\n"
+	topBorder := "┌─ juju citizenship report " + strings.Repeat("─", 52) + "┐\n"
 	bottomBorder := "└" + strings.Repeat("─", 78) + "┘\n"
 
 	// Inner usable width = 78 - 2*2 (margins) = 74.
@@ -324,7 +324,7 @@ func tableGoldenExpected() string {
 // three content lines, no table area, no trailing newline beyond the
 // bottom border.
 func tableEmptyExpected() string {
-	topBorder := "┌─ juju citizen " + strings.Repeat("─", 63) + "┐\n"
+	topBorder := "┌─ juju citizenship report " + strings.Repeat("─", 52) + "┐\n"
 	bottomBorder := "└" + strings.Repeat("─", 78) + "┘\n"
 	innerPad := func(body string) string {
 		visible := len([]rune(body))

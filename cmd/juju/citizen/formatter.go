@@ -232,11 +232,14 @@ func writeDashboardEmpty(writer io.Writer, now time.Time) error {
 
 // writeTopBorder emits the panel's top border with the inset title.
 func writeTopBorder(writer io.Writer) error {
-	// Format: ┌─ juju citizen <fill ─> ┐
-	// Inner width is 78. The prefix "─ juju citizen " occupies 15
-	// inner columns (1 dash + 1 space + 12 letters + 1 space); the
-	// remainder is dashes.
-	prefix := boxHorizontal + " juju citizen "
+	// Format: ┌─ juju citizenship report <fill ─> ┐
+	// Inner width is 78. The prefix is rendered in bold (when color is
+	// enabled) so it reads as a title rather than border filler.
+	titleText := " juju citizenship report "
+	if colorEnabled {
+		titleText = ansiBold + titleText + ansiBoldOff
+	}
+	prefix := boxHorizontal + titleText
 	prefixWidth := visibleWidth(prefix)
 	fill := strings.Repeat(boxHorizontal, panelInnerWidth-prefixWidth)
 	_, err := fmt.Fprintf(writer, "%s%s%s%s\n", boxTopLeft, prefix, fill, boxTopRight)
