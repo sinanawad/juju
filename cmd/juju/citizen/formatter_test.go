@@ -323,7 +323,8 @@ func tableGoldenExpected() string {
 		row("◆ info", "bad-active/0", "AUTHOR", "active-with-message", "—",
 			"Active unit carries non-empty msg")
 
-	return topBorder + line1 + line2 + line3 + bottomBorder + "\n" + header + rows
+	footer := "\n  Tip: run with --format=verbose for per-finding recommendations.\n"
+	return topBorder + line1 + line2 + line3 + bottomBorder + "\n" + header + rows + footer
 }
 
 // tableEmptyExpected returns the pinned empty-state golden output:

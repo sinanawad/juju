@@ -214,7 +214,27 @@ func formatTable(writer io.Writer, value any) error {
 	if _, err := fmt.Fprintln(writer); err != nil {
 		return err
 	}
-	return writeTable(writer, findings, now)
+	if err := writeTable(writer, findings, now); err != nil {
+		return err
+	}
+	return writeTableFooter(writer)
+}
+
+// writeTableFooter emits a one-line guidance hint below the table
+// pointing operators at the verbose format for per-finding action
+// recommendations. Dimmed entirely (with the flag itself in cyan)
+// when color is enabled, so it reads as guidance rather than data.
+func writeTableFooter(writer io.Writer) error {
+	intro := "Tip: run with "
+	flag := "--format=verbose"
+	outro := " for per-finding recommendations."
+	if colorEnabled {
+		intro = ansiDim + intro + ansiDimOff
+		flag = ansiCyan + flag + ansiReset
+		outro = ansiDim + outro + ansiDimOff
+	}
+	_, err := fmt.Fprintf(writer, "\n%s%s%s%s\n", rowLeftMargin, intro, flag, outro)
+	return err
 }
 
 // writeDashboard emits the four-line dashboard panel for a non-empty
