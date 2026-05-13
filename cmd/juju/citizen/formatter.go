@@ -150,7 +150,7 @@ const (
 const (
 	colSevWidth    = 8
 	colEntityWidth = 24
-	colOwnerWidth  = 13
+	colOwnerWidth  = 6 // wide enough for "AUTHOR" (the longest short owner)
 	colCheckWidth  = 22
 	colAgeWidth    = 7
 	colSeparator   = "  " // two spaces between columns
@@ -322,7 +322,7 @@ func writePanelLineOwners(writer io.Writer, findings []Finding) error {
 		ownersLabel = ansiBold + ownersLabel + ansiBoldOff
 	}
 	body := fmt.Sprintf(
-		"%s       charm-author %d  %s  operator %d  %s  mixed %d  %s  platform %d",
+		"%s       AUTHOR %d  %s  OP %d  %s  MIX %d  %s  PLAT %d",
 		ownersLabel,
 		counts[OwnerCharmAuthor], glyphBullet,
 		counts[OwnerOperator], glyphBullet,
@@ -386,7 +386,7 @@ func writeTable(writer io.Writer, findings []Finding, now time.Time) error {
 func writeTableRow(writer io.Writer, f Finding, now time.Time) error {
 	sevCell := formatSeverityCell(f.Severity)
 	entityCell := padOrTruncate(f.Entity, colEntityWidth)
-	ownerCell := padOrTruncate(string(f.Owner), colOwnerWidth)
+	ownerCell := padOrTruncate(shortOwner(f.Owner), colOwnerWidth)
 	checkCell := padOrTruncate(f.CheckID, colCheckWidth)
 	ageCell := padAgeRight(formatAge(f.Since, now), colAgeWidth)
 
@@ -464,6 +464,23 @@ func padAgeRight(s string, width int) string {
 //   - 60m..23h → "3h"
 //   - >=24h → "2d" (integer days)
 //
+// shortOwner maps an Owner to its short table-column label.
+// AUTHOR / OP / MIX / PLAT. Unknown values fall back to the raw
+// enum string so the regression is visible in golden diffs.
+func shortOwner(o Owner) string {
+	switch o {
+	case OwnerCharmAuthor:
+		return "AUTHOR"
+	case OwnerOperator:
+		return "OP"
+	case OwnerMixed:
+		return "MIX"
+	case OwnerPlatform:
+		return "PLAT"
+	}
+	return string(o)
+}
+
 // ageColor returns an ANSI color code for an age value, or "" for
 // uncolored. Bands: >30m yellow, >2h red. Nil since is uncolored.
 func ageColor(since *time.Time, now time.Time) string {

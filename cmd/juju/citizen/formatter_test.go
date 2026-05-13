@@ -271,7 +271,7 @@ func tableGoldenExpected() string {
 	// Line 2: severity counts (51 visible chars) + 23 trailing spaces.
 	line2 := innerPad("findings: 4   ● 1 critical   ▲ 2 warning   ◆ 1 info")
 	// Line 3: owners (70 visible chars) + 4 trailing spaces.
-	line3 := innerPad("owners:       charm-author 4  •  operator 0  •  mixed 0  •  platform 0")
+	line3 := innerPad("owners:       AUTHOR 4  •  OP 0  •  MIX 0  •  PLAT 0")
 
 	// Header and rows: 2-space left margin, column widths
 	// 8/24/13/22/7 with 2-space separator, then SUMMARY.
@@ -292,7 +292,7 @@ func tableGoldenExpected() string {
 	header := "  " +
 		pad("SEV", 8) + "  " +
 		pad("ENTITY", 24) + "  " +
-		pad("OWNER", 13) + "  " +
+		pad("OWNER", 6) + "  " +
 		pad("CHECK", 22) + "  " +
 		rpad("AGE", 7) + "  " +
 		"SUMMARY\n"
@@ -301,20 +301,20 @@ func tableGoldenExpected() string {
 		return "  " +
 			pad(sev, 8) + "  " +
 			pad(entity, 24) + "  " +
-			pad(owner, 13) + "  " +
+			pad(owner, 6) + "  " +
 			pad(check, 22) + "  " +
 			rpad(age, 7) + "  " +
 			summary + "\n"
 	}
 
 	rows := "" +
-		row("● crit", "db/0", "charm-author", "hook-error", "5m",
+		row("● crit", "db/0", "AUTHOR", "hook-error", "5m",
 			"Recent uncaught hook exception") +
-		row("▲ warn", "bad-churn/0", "charm-author", "status-churn", "18m",
+		row("▲ warn", "bad-churn/0", "AUTHOR", "status-churn", "18m",
 			"Workload status churning") +
-		row("▲ warn", "bad-blocked/0", "charm-author", "blocked-no-message", "—",
+		row("▲ warn", "bad-blocked/0", "AUTHOR", "blocked-no-message", "—",
 			"Blocked w/o actionable msg") +
-		row("◆ info", "bad-active/0", "charm-author", "active-with-message", "—",
+		row("◆ info", "bad-active/0", "AUTHOR", "active-with-message", "—",
 			"Active unit carries non-empty msg")
 
 	return topBorder + line1 + line2 + line3 + bottomBorder + "\n" + header + rows
