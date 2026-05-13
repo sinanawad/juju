@@ -25,6 +25,7 @@ import (
 	"github.com/juju/juju/cmd/juju/block"
 	"github.com/juju/juju/cmd/juju/caas"
 	"github.com/juju/juju/cmd/juju/charmhub"
+	"github.com/juju/juju/cmd/juju/citizen"
 	"github.com/juju/juju/cmd/juju/cloud"
 	"github.com/juju/juju/cmd/juju/controller"
 	"github.com/juju/juju/cmd/juju/crossmodel"
@@ -458,6 +459,9 @@ func registerCommands(r commandRegistry) {
 	r.Register(block.NewDisableCommand())
 	r.Register(block.NewListCommand())
 	r.Register(block.NewEnableCommand())
+
+	// Citizenship observatory.
+	r.Register(citizen.NewCitizenCommand())
 
 	// Manage storage
 	r.Register(storage.NewAddCommand())
