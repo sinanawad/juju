@@ -89,8 +89,25 @@ func (s *k8sSuite) TestSessionHandlerPreservesRawCommand(c *tc.C) {
 	c.Check(received.Commands, tc.DeepEquals, []string{command})
 }
 
-func (s *k8sSuite) TestSessionHandlerStartsDefaultShell(c *tc.C) {
-	destination, err := virtualhostname.NewInfoContainerTarget("8419cd78-4993-4c3a-928e-c646226beeee", "app/0", "workload")
+func (s *k8sSuite) TestSessionHandlerShellIntent(c *tc.C) {
+	for _, container := range []string{"workload", "charm", "api-server"} {
+		for _, pty := range []bool{false, true} {
+			c.Logf("container %q, PTY %t", container, pty)
+			s.testSessionShellIntent(c, container, pty, "")
+		}
+	}
+}
+
+func (s *k8sSuite) TestSessionHandlerPreservesExplicitShellCommand(c *tc.C) {
+	// Older clients explicitly request bash. Shell selection must not change
+	// that request, or any other explicit command.
+	for _, command := range []string{"exec bash --login", "exit 7"} {
+		s.testSessionShellIntent(c, "workload", false, command)
+	}
+}
+
+func (s *k8sSuite) testSessionShellIntent(c *tc.C, container string, pty bool, command string) {
+	destination, err := virtualhostname.NewInfoContainerTarget("8419cd78-4993-4c3a-928e-c646226beeee", "app/0", container)
 	c.Assert(err, tc.ErrorIsNil)
 
 	var received k8sexec.ExecParams
@@ -109,10 +126,49 @@ func (s *k8sSuite) TestSessionHandlerStartsDefaultShell(c *tc.C) {
 	session, err := client.NewSession()
 	c.Assert(err, tc.ErrorIsNil)
 	defer session.Close()
+	if pty {
+		c.Assert(session.RequestPty("xterm", 24, 80, nil), tc.ErrorIsNil)
+	}
+	if command == "" {
+		c.Assert(session.Shell(), tc.ErrorIsNil)
+		c.Assert(session.Wait(), tc.ErrorIsNil)
+		c.Check(received.Commands, tc.DeepEquals, []string(nil))
+	} else {
+		c.Assert(session.Run(command), tc.ErrorIsNil)
+		c.Check(received.Commands, tc.DeepEquals, []string{command})
+	}
+	c.Check(received.Interactive, tc.Equals, command == "")
+	c.Check(received.LoginShell, tc.IsFalse)
+	c.Check(received.TTY, tc.Equals, pty)
+}
+
+func (s *k8sSuite) TestSessionHandlerReportsNoShell(c *tc.C) {
+	destination, err := virtualhostname.NewInfoContainerTarget("8419cd78-4993-4c3a-928e-c646226beeee", "app/0", "workload")
+	c.Assert(err, tc.ErrorIsNil)
+	handlers, err := NewHandlers(destination, newSessionResolver(c, destination, cloudspec.CloudSpec{}), func(string, cloudspec.CloudSpec) (k8sexec.Executor, error) {
+		return executorFunc(func(context.Context, k8sexec.ExecParams, <-chan struct{}) error {
+			return k8sexec.ErrNoShell
+		}), nil
+	}, loggertesting.WrapCheckLog(c), common.NoopMetrics{})
+	c.Assert(err, tc.ErrorIsNil)
+
+	server := startK8sTestServer(c, &ssh.Server{Handler: handlers.SessionHandler})
+	client, err := server.client()
+	c.Assert(err, tc.ErrorIsNil)
+	defer client.Close()
+	session, err := client.NewSession()
+	c.Assert(err, tc.ErrorIsNil)
+	defer session.Close()
+	var stderr bytes.Buffer
+	session.Stderr = &stderr
 
 	c.Assert(session.Shell(), tc.ErrorIsNil)
-	c.Assert(session.Wait(), tc.ErrorIsNil)
-	c.Check(received.Commands, tc.DeepEquals, []string{"/bin/sh"})
+	err = session.Wait()
+	var exitErr *gossh.ExitError
+	c.Assert(errors.As(err, &exitErr), tc.IsTrue)
+	c.Check(exitErr.ExitStatus(), tc.Equals, 1)
+	c.Check(stderr.String(), tc.Equals,
+		"executing command in Kubernetes pod: "+k8sexec.ErrNoShell.Error()+"\n")
 }
 
 func (s *k8sSuite) TestSessionHandlerPropagatesExitStatus(c *tc.C) {

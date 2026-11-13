@@ -659,3 +659,40 @@ func (s *sshContainerSuite) TestSSHWithTermNoTTY(c *tc.C) {
 	err := s.sshC.SSH(ctx, false, target)
 	c.Assert(err, tc.ErrorIsNil)
 }
+
+func (s *sshContainerSuite) TestSSHInteractive(c *tc.C) {
+	s.PatchEnvironment("TERM", "foobar-256color")
+	for _, pty := range []bool{false, true} {
+		c.Logf("PTY %t", pty)
+		ctrl := s.setUpController(c, "")
+		defer ctrl.Finish()
+		ctx := mocks.NewMockContext(ctrl)
+		buffer := bytes.NewBuffer(nil)
+		var env []string
+		if pty {
+			env = []string{"TERM=foobar-256color"}
+		}
+		gomock.InOrder(
+			ctx.EXPECT().InterruptNotify(gomock.Any()),
+			ctx.EXPECT().GetStdout().Return(buffer),
+			ctx.EXPECT().GetStderr().Return(buffer),
+			ctx.EXPECT().GetStdin().Return(buffer),
+			s.execClient.EXPECT().Exec(gomock.Any(), k8sexec.ExecParams{
+				PodName:     "mariadb-k8s-0",
+				Interactive: true,
+				LoginShell:  pty,
+				TTY:         pty,
+				Env:         env,
+				Stdout:      buffer,
+				Stderr:      buffer,
+				Stdin:       buffer,
+			}, gomock.Any()).Return(nil),
+			ctx.EXPECT().StopInterruptNotify(gomock.Any()),
+		)
+
+		target := &ssh.ResolvedTarget{}
+		target.SetEntity("mariadb-k8s-0")
+		err := s.sshC.SSH(ctx, pty, target)
+		c.Assert(err, tc.ErrorIsNil)
+	}
+}

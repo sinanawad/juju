@@ -60,21 +60,15 @@ func (h *Handlers) SessionHandler(session ssh.Session) {
 		terminalSizeQueue = newTerminalSizeQueue(session.Context(), ptyRequest.Window, windowChanges)
 	}
 
-	command := session.RawCommand()
-	if command == "" {
-		command = "/bin/sh"
-	}
 	signals := make(chan ssh.Signal, 1)
 	session.Signals(signals)
 	// Based on the docstring of `session.Signals`:
 	// registering nil will unregister the channel from signal sends.
 	defer session.Signals(nil)
 
-	h.metrics.ObserveTimeToSession(session.Context())
-	err = executor.Exec(session.Context(), k8sexec.ExecParams{
+	params := k8sexec.ExecParams{
 		PodName:           podName,
 		ContainerName:     container,
-		Commands:          []string{command},
 		Stdout:            session,
 		Stderr:            sessionStderr(session, hasPTY),
 		Stdin:             session,
@@ -82,7 +76,14 @@ func (h *Handlers) SessionHandler(session ssh.Session) {
 		TerminalSizeQueue: terminalSizeQueue,
 		Env:               sessionEnvironment(session.Environ(), ptyRequest.Term, hasPTY),
 		Signal:            translateSignals(session.Context(), signals),
-	}, session.Context().Done())
+	}
+	if command := session.RawCommand(); command != "" {
+		params.Commands = []string{command}
+	} else {
+		params.Interactive = true
+	}
+	h.metrics.ObserveTimeToSession(session.Context())
+	err = executor.Exec(session.Context(), params, session.Context().Done())
 	if err != nil {
 		if exitErr, ok := errors.AsType[k8sexec.ExitError](err); ok {
 			_ = session.Exit(exitErr.ExitStatus())

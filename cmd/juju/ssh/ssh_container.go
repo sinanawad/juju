@@ -249,32 +249,29 @@ type Context interface {
 func (c *sshContainer) ssh(ctx Context, enablePty bool, target *resolvedTarget) (err error) {
 	cancel, stop := getInterruptAbortChan(ctx)
 	defer stop()
+
 	var env []string
-	args := c.args
 	if enablePty {
 		if term := os.Getenv("TERM"); term != "" {
 			env = append(env, "TERM="+term)
 		}
-		if len(args) == 0 {
-			args = []string{"exec", "bash", "--login"}
-		}
-	} else if len(args) == 0 {
-		args = []string{"exec", "sh"}
 	}
-	return c.execClient.Exec(
-		ctx,
-		k8sexec.ExecParams{
-			PodName:       target.entity,
-			ContainerName: c.container,
-			Commands:      args,
-			Stdout:        ctx.GetStdout(),
-			Stderr:        ctx.GetStderr(),
-			Stdin:         ctx.GetStdin(),
-			TTY:           enablePty,
-			Env:           env,
-		},
-		cancel,
-	)
+
+	params := k8sexec.ExecParams{
+		PodName:       target.entity,
+		ContainerName: c.container,
+		Commands:      c.args,
+		TTY:           enablePty,
+		Env:           env,
+		Stdout:        ctx.GetStdout(),
+		Stderr:        ctx.GetStderr(),
+		Stdin:         ctx.GetStdin(),
+	}
+	if len(c.args) == 0 {
+		params.Interactive = true
+		params.LoginShell = enablePty
+	}
+	return c.execClient.Exec(ctx, params, cancel)
 }
 
 func getInterruptAbortChan(ctx Context) (<-chan struct{}, func()) {
