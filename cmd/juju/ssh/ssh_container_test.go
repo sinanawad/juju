@@ -8,7 +8,6 @@ import (
 	"context"
 	"os"
 	stdtesting "testing"
-	"time"
 
 	"github.com/canonical/gomock/gomock"
 	"github.com/juju/errors"
@@ -25,11 +24,11 @@ import (
 	"github.com/juju/juju/environs/cloudspec"
 	k8sexec "github.com/juju/juju/internal/provider/kubernetes/exec"
 	k8smocks "github.com/juju/juju/internal/provider/kubernetes/mocks"
-	"github.com/juju/juju/internal/testing"
+	coretesting "github.com/juju/juju/internal/testing"
 )
 
 type sshContainerSuite struct {
-	testing.BaseSuite
+	coretesting.BaseSuite
 
 	modelUUID      string
 	modelName      string
@@ -54,15 +53,16 @@ func (s *sshContainerSuite) SetUpSuite(c *tc.C) {
 }
 
 func (s *sshContainerSuite) SetUpTest(c *tc.C) {
+	s.BaseSuite.SetUpTest(c)
 	s.modelName = "test"
 }
 
 func (s *sshContainerSuite) TearDownTest(c *tc.C) {
-	s.BaseSuite.TearDownTest(c)
 	s.applicationAPI = nil
 	s.execClient = nil
 	s.mockPods = nil
 	s.mockNamespaces = nil
+	s.BaseSuite.TearDownTest(c)
 }
 
 func (s *sshContainerSuite) setUpController(c *tc.C, containerName string) *gomock.Controller {
@@ -395,13 +395,8 @@ func (s *sshContainerSuite) TestSSHCancelled(c *tc.C) {
 					Stderr:   buffer,
 					Stdin:    buffer,
 				})
-				select {
-				case <-cancel:
-					return errors.New("cancelled")
-				case <-time.After(testing.LongWait):
-					c.Fatalf("timed out waiting for Exec return")
-				}
-				return nil
+				<-cancel
+				return errors.New("cancelled")
 			},
 		),
 		ctx.EXPECT().StopInterruptNotify(gomock.Any()),
@@ -427,12 +422,8 @@ func (s *sshContainerSuite) TestGetInterruptAbortChanInterrupted(c *tc.C) {
 	)
 	cancel, _ := ssh.GetInterruptAbortChan(ctx)
 
-	select {
-	case _, ok := <-cancel:
-		c.Assert(ok, tc.IsFalse)
-	case <-time.After(testing.LongWait):
-		c.Fatalf("timed out waiting for cancelling")
-	}
+	_, ok := <-cancel
+	c.Check(ok, tc.IsFalse)
 }
 
 func (s *sshContainerSuite) TestGetInterruptAbortChanStopped(c *tc.C) {
@@ -446,12 +437,8 @@ func (s *sshContainerSuite) TestGetInterruptAbortChanStopped(c *tc.C) {
 	)
 	cancel, stop := ssh.GetInterruptAbortChan(ctx)
 	stop()
-	select {
-	case _, ok := <-cancel:
-		c.Assert(ok, tc.IsFalse)
-	case <-time.After(testing.LongWait):
-		c.Fatalf("timed out waiting for cancelling")
-	}
+	_, ok := <-cancel
+	c.Check(ok, tc.IsFalse)
 }
 
 func (s *sshContainerSuite) TestCopyInvalidArgs(c *tc.C) {

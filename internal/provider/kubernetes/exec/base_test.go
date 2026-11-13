@@ -17,11 +17,11 @@ import (
 	"github.com/juju/juju/internal/provider/kubernetes/exec"
 	execmocks "github.com/juju/juju/internal/provider/kubernetes/exec/mocks"
 	"github.com/juju/juju/internal/provider/kubernetes/mocks"
-	"github.com/juju/juju/internal/testing"
+	coretesting "github.com/juju/juju/internal/testing"
 )
 
 type BaseSuite struct {
-	testing.BaseSuite
+	coretesting.BaseSuite
 
 	namespace             string
 	k8sClient             *mocks.MockInterface
@@ -49,8 +49,6 @@ func (s *BaseSuite) SetUpTest(c *tc.C) {
 }
 
 func (s *BaseSuite) TearDownTest(c *tc.C) {
-	s.BaseSuite.TearDownTest(c)
-
 	s.k8sClient = nil
 	s.restClient = nil
 	s.execClient = nil
@@ -63,6 +61,7 @@ func (s *BaseSuite) TearDownTest(c *tc.C) {
 		s.pipWriter.Close()
 		s.pipWriter = nil
 	}
+	s.BaseSuite.TearDownTest(c)
 }
 
 func (s *BaseSuite) setupExecClient(c *tc.C) *gomock.Controller {

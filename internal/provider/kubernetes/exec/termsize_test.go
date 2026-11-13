@@ -7,8 +7,7 @@ package exec_test
 
 import (
 	"os"
-	stdtesting "testing"
-	"time"
+	"testing"
 
 	"github.com/canonical/gomock/gomock"
 	"github.com/juju/tc"
@@ -17,30 +16,45 @@ import (
 
 	"github.com/juju/juju/internal/provider/kubernetes/exec"
 	"github.com/juju/juju/internal/provider/kubernetes/exec/mocks"
-	"github.com/juju/juju/internal/testing"
+	coretesting "github.com/juju/juju/internal/testing"
 )
 
 type termSizeSuite struct {
-	testing.BaseSuite
+	coretesting.BaseSuite
 
 	sizeQueue exec.SizeQueueInterface
 	getSize   *mocks.MockSizeGetter
 	nCh       chan os.Signal
 }
 
-func TestTermSizeSuite(t *stdtesting.T) {
+func TestTermSizeSuite(t *testing.T) {
 	tc.Run(t, &termSizeSuite{})
 }
 
 func (s *termSizeSuite) TearDownTest(c *tc.C) {
-	s.BaseSuite.TearDownTest(c)
-
 	if s.sizeQueue != nil {
 		s.sizeQueue.Stop()
 		s.sizeQueue = nil
 	}
 	s.getSize = nil
 	s.nCh = nil
+	s.BaseSuite.TearDownTest(c)
+}
+
+func (s *termSizeSuite) TestWatch(c *tc.C) {
+	ctrl := s.setupQ(c)
+	defer ctrl.Finish()
+	size1 := &remotecommand.TerminalSize{Width: 111, Height: 222}
+	size2 := &remotecommand.TerminalSize{Width: 333, Height: 666}
+	gomock.InOrder(
+		s.getSize.EXPECT().Get(1).Return(size1),
+		s.getSize.EXPECT().Get(1).Return(size2),
+	)
+
+	s.sizeQueue.Watch(1)
+	c.Check(s.sizeQueue.Next(), tc.DeepEquals, size1)
+	s.nCh <- unix.SIGWINCH
+	c.Check(s.sizeQueue.Next(), tc.DeepEquals, size2)
 }
 
 func (s *termSizeSuite) setupQ(c *tc.C) *gomock.Controller {
@@ -52,62 +66,4 @@ func (s *termSizeSuite) setupQ(c *tc.C) *gomock.Controller {
 		s.getSize, s.nCh,
 	)
 	return ctrl
-}
-
-func (s *termSizeSuite) TestWatch(c *tc.C) {
-	ctrl := s.setupQ(c)
-	defer ctrl.Finish()
-
-	go func() {
-		// window size changed.
-		s.nCh <- unix.SIGWINCH
-	}()
-
-	outChan := make(chan *remotecommand.TerminalSize, 1)
-	done := make(chan struct{})
-	defer close(done)
-
-	go func(sizeQueue exec.SizeQueueInterface) {
-		for {
-			select {
-			case outChan <- sizeQueue.Next():
-			case <-done:
-				return
-			}
-		}
-	}(s.sizeQueue)
-
-	size1 := &remotecommand.TerminalSize{Width: 111, Height: 222}
-	size2 := &remotecommand.TerminalSize{Width: 333, Height: 666}
-
-	gomock.InOrder(
-		s.getSize.EXPECT().Get(gomock.Any()).DoAndReturn(
-			// get initial window size.
-			func(fd int) *remotecommand.TerminalSize {
-				c.Assert(fd, tc.DeepEquals, 1)
-				return size1
-			},
-		),
-		s.getSize.EXPECT().Get(gomock.Any()).DoAndReturn(
-			func(fd int) *remotecommand.TerminalSize {
-				// get the latest changed window size.
-				c.Assert(fd, tc.DeepEquals, 1)
-				return size2
-			},
-		),
-	)
-
-	s.sizeQueue.Watch(1)
-
-	for _, expected := range []*remotecommand.TerminalSize{
-		size1, size2,
-	} {
-		select {
-		case o := <-outChan:
-			c.Assert(o, tc.DeepEquals, expected)
-		case <-time.After(testing.LongWait):
-			c.Fatalf("timed out waiting for result")
-		}
-	}
-
 }

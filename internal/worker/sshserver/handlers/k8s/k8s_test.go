@@ -13,10 +13,13 @@ import (
 	"github.com/juju/juju/environs/cloudspec"
 	loggertesting "github.com/juju/juju/internal/logger/testing"
 	k8sexec "github.com/juju/juju/internal/provider/kubernetes/exec"
+	coretesting "github.com/juju/juju/internal/testing"
 	"github.com/juju/juju/internal/worker/sshserver/handlers/common"
 )
 
-type k8sSuite struct{}
+type k8sSuite struct {
+	coretesting.BaseSuite
+}
 
 func TestK8sSuite(t *testing.T) {
 	tc.Run(t, &k8sSuite{})
