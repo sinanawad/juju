@@ -61,6 +61,12 @@ Establishing a connection to Kubernetes units and machines varies, but requires 
 
 For Kubernetes units, the Juju controller establishes a direct connection to the Kubernetes API server. Access to the API server is already required to use the Kubernetes cluster as a Juju cloud, so no additional connectivity is required.
 
+From Juju 4.2, Kubernetes SSH can use either `sh` or `bash`. Explicit commands, raw SSH shell requests and commandless `juju ssh --direct --pty=false` sessions prefer `sh`, falling back to `bash` when `sh` is absent. Commandless `juju ssh` sessions through the controller, and direct sessions with a terminal, prefer a Bash login shell and fall back to `sh`. This preserves the login profiles used by workloads and Juju's introspection tools.
+
+A container with neither shell fails with a non-zero status and a message that no shell could be found. Input and terminal resizing are preserved when Juju tries the other shell. Other failures, such as permission errors or a command's non-zero exit, retain their original diagnostics.
+
+For controller-mediated explicit commands and raw SSH shell requests, an updated controller provides shell fallback. Commandless `juju ssh` login-shell fallback also requires an updated client. A new client connecting through an older controller retains the existing explicit Bash login request. Direct SSH performs shell selection in the client, including when it connects to a Juju 3.6 controller using `--direct`.
+
 ```{ggarch}
 :file: ../juju.ggarch
 :view: SSH proxy Kubernetes

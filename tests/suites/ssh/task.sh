@@ -15,6 +15,7 @@ test_ssh() {
 	case "${BOOTSTRAP_PROVIDER:-}" in
 	"k8s")
 		test_ssh_k8s
+		test_ssh_k8s_shell
 		;;
 	*)
 		test_ssh_machine

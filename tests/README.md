@@ -94,6 +94,24 @@ everything setup correctly.
 Running `./main.sh deploy run_deploy_bundle` will also run `test_deploy_bundles`,
 but no other subtests, just `run_deploy_bundle`.
 
+### Kubernetes SSH shell tests
+
+The SSH shell matrix is opt-in because it requires a cluster-reachable image
+containing `bash` but no `sh`. Set `SSH_TEST_BASH_IMAGE` to enable it:
+
+```sh
+BOOTSTRAP_PROVIDER=k8s BOOTSTRAP_CLOUD=microk8s \
+  SSH_TEST_BASH_IMAGE='<registry>/<bash-only-image>:<tag>' \
+  ./main.sh ssh test_ssh_k8s_shell
+```
+
+The test checks the image's shell contents before exercising fallback. It also
+uses BusyBox, Ubuntu and pause images for workloads with only `sh`, both shells
+and neither shell. Override these with `SSH_TEST_SH_IMAGE`,
+`SSH_TEST_BOTH_IMAGE` and `SSH_TEST_NOSHELL_IMAGE` if needed. Without
+`SSH_TEST_BASH_IMAGE`, the shell matrix reports a skip; the other SSH tests run
+normally.
+
 ### Using local controllers
 
 The use of local controllers whilst development is advantageous because you don't

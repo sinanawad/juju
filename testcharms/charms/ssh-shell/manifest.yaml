@@ -1,0 +1,7 @@
+bases:
+  - name: ubuntu
+    channel: 24.04/stable
+    architectures:
+      - amd64
+      - arm64
+      - s390x

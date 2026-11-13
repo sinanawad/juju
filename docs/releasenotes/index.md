@@ -12,6 +12,7 @@ myst:
 :hidden:
 :glob:
 
+Juju 4.2 <juju_4.2.x/index>
 Juju 4.0 <juju_4.0.x/index>
 Out of support <unsupported/index>
 ```

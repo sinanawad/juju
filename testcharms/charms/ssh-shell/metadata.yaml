@@ -1,0 +1,12 @@
+name: ssh-shell
+summary: Workload container for juju ssh shell probes
+description: |
+  One container whose image is supplied at deploy time. The charm
+  container is not the subject of the test.
+containers:
+  workload:
+    resource: workload
+resources:
+  workload:
+    type: oci-image
+    description: Image executed as the workload container
