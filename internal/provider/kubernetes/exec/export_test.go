@@ -36,8 +36,13 @@ func SafeRun(ctx context.Context, opts ExecParams, executor remotecommand.Execut
 
 type SizeQueueInterface interface {
 	Next() *remotecommand.TerminalSize
+	Push(remotecommand.TerminalSize) bool
 	Watch(int)
 	Stop()
+}
+
+func (s *sizeQueue) Push(size remotecommand.TerminalSize) bool {
+	return s.push(size)
 }
 
 func (s *sizeQueue) Watch(fd int) {

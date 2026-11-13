@@ -57,6 +57,85 @@ func (s *termSizeSuite) TestWatch(c *tc.C) {
 	c.Check(s.sizeQueue.Next(), tc.DeepEquals, size2)
 }
 
+func (s *termSizeSuite) TestStopUnblocksNext(c *tc.C) {
+	ctrl := s.setupQ(c)
+	defer ctrl.Finish()
+	queue := s.sizeQueue
+	result := readSize(queue)
+
+	queue.Stop()
+	s.sizeQueue = nil
+	c.Check(<-result, tc.IsNil)
+	c.Check(queue.Next(), tc.IsNil)
+}
+
+func (s *termSizeSuite) TestStopDiscardsBufferedSize(c *tc.C) {
+	ctrl := s.setupQ(c)
+	defer ctrl.Finish()
+	queue := s.sizeQueue
+	c.Check(queue.Push(remotecommand.TerminalSize{Width: 80, Height: 24}),
+		tc.IsTrue)
+
+	queue.Stop()
+	s.sizeQueue = nil
+	c.Check(queue.Next(), tc.IsNil)
+}
+
+func (s *termSizeSuite) TestStopUnblocksPush(c *tc.C) {
+	ctrl := s.setupQ(c)
+	defer ctrl.Finish()
+	queue := s.sizeQueue
+	size := remotecommand.TerminalSize{Width: 80, Height: 24}
+	c.Check(queue.Push(size), tc.IsTrue)
+	// The buffer is full, so this push cannot complete before stop.
+	result := make(chan bool, 1)
+	go func() {
+		result <- queue.Push(size)
+	}()
+
+	queue.Stop()
+	s.sizeQueue = nil
+	c.Check(<-result, tc.IsFalse)
+}
+
+func (s *termSizeSuite) TestStoppedQueueRejectsPush(c *tc.C) {
+	ctrl := s.setupQ(c)
+	defer ctrl.Finish()
+	queue := s.sizeQueue
+	queue.Stop()
+	s.sizeQueue = nil
+
+	// Even with room in the queue, a stopped stream needs no more sizes.
+	c.Check(queue.Push(remotecommand.TerminalSize{Width: 80, Height: 24}),
+		tc.IsFalse)
+}
+
+func (s *termSizeSuite) TestStopUnblocksInitialWatch(c *tc.C) {
+	ctrl := s.setupQ(c)
+	defer ctrl.Finish()
+	// An unbuffered queue makes watch wait while pushing its initial size.
+	s.sizeQueue = exec.NewSizeQueueForTest(
+		make(chan remotecommand.TerminalSize), s.getSize, s.nCh,
+	)
+	queue := s.sizeQueue
+	gettingSize := make(chan struct{})
+	s.getSize.EXPECT().Get(1).DoAndReturn(func(int) *remotecommand.TerminalSize {
+		close(gettingSize)
+		return &remotecommand.TerminalSize{Width: 80, Height: 24}
+	})
+	watchReturned := make(chan struct{})
+	go func() {
+		defer close(watchReturned)
+		queue.Watch(1)
+	}()
+	<-gettingSize
+
+	queue.Stop()
+	s.sizeQueue = nil
+	<-watchReturned
+	c.Check(queue.Next(), tc.IsNil)
+}
+
 func (s *termSizeSuite) setupQ(c *tc.C) *gomock.Controller {
 	ctrl := gomock.NewController(c)
 	s.getSize = mocks.NewMockSizeGetter(ctrl)

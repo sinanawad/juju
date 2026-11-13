@@ -100,3 +100,11 @@ func (s *BaseSuite) setupExecClient(c *tc.C) *gomock.Controller {
 func (s *BaseSuite) k8sNotFoundError() *k8serrors.StatusError {
 	return k8serrors.NewNotFound(schema.GroupResource{}, "test")
 }
+
+func readSize(queue exec.TerminalSizeQueue) <-chan *exec.TerminalSize {
+	result := make(chan *exec.TerminalSize, 1)
+	go func() {
+		result <- queue.Next()
+	}()
+	return result
+}

@@ -8,6 +8,7 @@ import (
 	"context"
 	"net/url"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -515,4 +516,94 @@ func (s *execSuite) TestErrorHandling(c *tc.C) {
 	c.Assert(err, tc.FitsTypeOf, &exec.ContainerNotRunningError{})
 	err = exec.HandleContainerNotFoundError(errors.New(`wow`))
 	c.Assert(err, tc.ErrorMatches, "wow")
+}
+
+func (s *execSuite) TestExecSignalFailureDoesNotRetryCommand(c *tc.C) {
+	signals := make(chan syscall.Signal)
+	primaryDone := make(chan struct{})
+	streams := []func(context.Context, remotecommand.StreamOptions) error{
+		func(ctx context.Context, _ remotecommand.StreamOptions) error {
+			// The command has started. A later signal error must not cause
+			// it to be executed a second time with another shell.
+			signals <- syscall.SIGTERM
+			<-ctx.Done()
+			close(primaryDone)
+			return ctx.Err()
+		},
+		func(context.Context, remotecommand.StreamOptions) error {
+			return errors.New("signal stream failed")
+		},
+	}
+	params := exec.ExecParams{
+		PodName:  "gitlab-k8s-uid",
+		Commands: []string{"echo", "started"},
+		Signal:   signals,
+	}
+	urls, err := s.execRecordingStreams(c, params, streams)
+	c.Check(err, tc.ErrorMatches, "send signal 15 failed: .*")
+	c.Check(urls, tc.HasLen, 2)
+	// The failed signal request also cancels the primary exec stream.
+	<-primaryDone
+}
+
+// execRecordingStreams runs Exec against a running pod and returns the exec
+// URLs. Each callback handles an exec or signal stream and must honour its
+// context if it blocks, so the caller can cancel and join a failed attempt.
+func (s *execSuite) execRecordingStreams(c *tc.C, params exec.ExecParams, streams []func(context.Context, remotecommand.StreamOptions) error) ([]string, error) {
+	ctrl := s.setupExecClient(c)
+	defer ctrl.Finish()
+
+	s.PatchValue(exec.RandomString, func(n int, validRunes []rune) string {
+		return "random"
+	})
+
+	pod := core.Pod{
+		Spec: core.PodSpec{
+			Containers: []core.Container{{Name: "gitlab-container"}},
+		},
+		Status: core.PodStatus{
+			Phase: core.PodRunning,
+			ContainerStatuses: []core.ContainerStatus{
+				{Name: "gitlab-container", State: core.ContainerState{Running: &core.ContainerStateRunning{}}},
+			},
+		},
+	}
+	pod.SetUID("gitlab-k8s-uid")
+	pod.SetName("gitlab-k8s-0")
+	gomock.InOrder(
+		s.mockPodGetter.EXPECT().Get(gomock.Any(), "gitlab-k8s-uid", metav1.GetOptions{}).
+			Return(nil, s.k8sNotFoundError()),
+		s.mockPodGetter.EXPECT().List(gomock.Any(), metav1.ListOptions{}).
+			Return(&core.PodList{Items: []core.Pod{pod}}, nil),
+	)
+
+	var urls []string
+	var mu sync.Mutex
+	s.restClient.EXPECT().Post().AnyTimes().DoAndReturn(func() *rest.Request {
+		return rest.NewRequestWithClient(
+			&url.URL{Path: "/path/"},
+			"",
+			rest.ClientContentConfig{GroupVersion: core.SchemeGroupVersion},
+			nil,
+		)
+	})
+	s.mockRemoteCMDGetter.EXPECT().RemoteCmdExecutorGetter(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().
+		DoAndReturn(func(_ *rest.Config, _ string, u *url.URL) (remotecommand.Executor, error) {
+			mu.Lock()
+			urls = append(urls, u.String())
+			mu.Unlock()
+			return s.mockRemoteCmdExecutor, nil
+		})
+	call := 0
+	s.mockRemoteCmdExecutor.EXPECT().StreamWithContext(gomock.Any(), gomock.Any()).Times(len(streams)).
+		DoAndReturn(func(ctx context.Context, opts remotecommand.StreamOptions) error {
+			mu.Lock()
+			i := call
+			call++
+			mu.Unlock()
+			return streams[i](ctx, opts)
+		})
+
+	err := s.execClient.Exec(c.Context(), params, nil)
+	return urls, err
 }

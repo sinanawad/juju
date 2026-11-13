@@ -53,10 +53,17 @@ func newSizeQueue() sizeQueueInterface {
 
 var _ remotecommand.TerminalSizeQueue = (*sizeQueue)(nil)
 
-// Next returns the new terminal size after the terminal has been resized. It returns nil when
-// monitoring has been stopped.
+// Next returns the next terminal size, or nil once monitoring stops.
 func (s *sizeQueue) Next() *remotecommand.TerminalSize {
+	// Prefer a completed stop over an already queued size.
 	select {
+	case <-s.done:
+		return nil
+	default:
+	}
+	select {
+	case <-s.done:
+		return nil
 	case size, ok := <-s.resizeChan:
 		if !ok {
 			return nil
@@ -69,16 +76,12 @@ func (s *sizeQueue) stop() {
 	close(s.done)
 }
 
-func (s *sizeQueue) push(size remotecommand.TerminalSize) {
-	select {
-	case s.resizeChan <- size:
-	}
-}
-
 func (s *sizeQueue) watch(fd int) {
 	if size := s.getSize.Get(fd); size != nil {
 		// Push initial size.
-		s.push(*size)
+		if !s.push(*size) {
+			return
+		}
 	}
 
 	go func() {
@@ -92,10 +95,26 @@ func (s *sizeQueue) watch(fd int) {
 				if size == nil {
 					return
 				}
-				s.push(*size)
+				if !s.push(*size) {
+					return
+				}
 			case <-s.done:
 				return
 			}
 		}
 	}()
+}
+
+func (s *sizeQueue) push(size remotecommand.TerminalSize) bool {
+	select {
+	case <-s.done:
+		return false
+	default:
+	}
+	select {
+	case <-s.done:
+		return false
+	case s.resizeChan <- size:
+		return true
+	}
 }

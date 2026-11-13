@@ -277,8 +277,15 @@ func (c client) exec(ctx context.Context, opts ExecParams, cancel <-chan struct{
 	}
 
 	errChan := make(chan error, 1)
+	streamCtx, cancelStream := context.WithCancel(ctx)
+	streamDone := make(chan struct{})
 	go func() {
-		errChan <- c.safeRun(ctx, opts, executor)
+		defer close(streamDone)
+		errChan <- c.safeRun(streamCtx, opts, executor)
+	}()
+	defer func() {
+		cancelStream()
+		<-streamDone
 	}()
 
 	sendSignal := func(sig syscall.Signal, group bool) error {
