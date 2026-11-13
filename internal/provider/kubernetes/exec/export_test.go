@@ -5,6 +5,7 @@ package exec
 
 import (
 	"context"
+	"io"
 	"os"
 
 	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
@@ -31,7 +32,7 @@ func (cp *CopyParams) Validate() error {
 }
 
 func SafeRun(ctx context.Context, opts ExecParams, executor remotecommand.Executor) error {
-	return client{}.safeRun(ctx, opts, executor)
+	return client{}.safeRun(ctx, opts, opts.Stdin, executor)
 }
 
 type SizeQueueInterface interface {
@@ -60,4 +61,28 @@ func NewSizeQueueForTest(resizeChan chan remotecommand.TerminalSize, getSize Siz
 		getSize:    getSize,
 		nCh:        nCh,
 	}
+}
+
+const MaxStdinReplay = maxStdinReplay
+
+type AttemptStdin = attemptStdin
+
+var NewAttemptStdin = newAttemptStdin
+
+func (s *attemptStdin) Next() io.Reader {
+	return s.next()
+}
+
+func (s *attemptStdin) Retry() (io.Reader, bool) {
+	return s.retry()
+}
+
+var NewAttemptSizeQueue = newAttemptSizeQueue
+
+func (s *attemptSizeQueue) NextAttempt() TerminalSizeQueue {
+	return s.next()
+}
+
+func (s *attemptSizeQueue) Stop() {
+	s.stop()
 }

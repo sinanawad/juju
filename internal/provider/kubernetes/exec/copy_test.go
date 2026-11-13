@@ -187,12 +187,12 @@ func (s *execSuite) TestCopyToPod(c *tc.C) {
 		s.restClient.EXPECT().Post().Return(copyRequest),
 		s.mockRemoteCmdExecutor.EXPECT().StreamWithContext(
 			gomock.Any(),
-			remotecommand.StreamOptions{
+			streamOptionsLike(remotecommand.StreamOptions{
 				Stdin:  s.pipReader,
 				Stdout: &stdout,
 				Stderr: &stderr,
 				Tty:    false,
-			},
+			}),
 		).Return(nil),
 	)
 

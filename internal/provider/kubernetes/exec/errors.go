@@ -6,6 +6,7 @@ package exec
 import (
 	"fmt"
 	"regexp"
+	"strings"
 
 	"github.com/juju/errors"
 	"k8s.io/client-go/util/exec"
@@ -46,6 +47,32 @@ func IsContainerNotRunningError(err error) bool {
 }
 
 var kubeletContainerNotFoundRegexp = regexp.MustCompile(`^.*container not found \("([a-zA-Z0-9\-]+)"\)$`)
+
+// ErrNoShell is returned when a container has neither sh nor bash.
+const ErrNoShell errors.ConstError = "Juju couldn't find any shell in the container " +
+	"(/bin/bash or /bin/sh). The command can't be executed"
+
+// missingShellRegexp matches exec/stat failures naming a shell, excluding
+// missing paths such as the working directory.
+var missingShellRegexp = regexp.MustCompile(`(?:exec: "?|stat |exec )(?:[^ :"]*/)?(sh|bash)"?: (?:executable file not found(?: in \$PATH)?|no such file or directory)`)
+
+// isMissingExecutable reports whether the runtime could not find shell.
+// Command exit errors and failures to find other resources do not match.
+func isMissingExecutable(err error, shell string) bool {
+	if err == nil {
+		return false
+	}
+	cause := errors.Cause(err)
+	if _, ok := cause.(ExitError); ok {
+		return false
+	}
+	msg := cause.Error()
+	if !strings.Contains(msg, "OCI runtime exec failed") {
+		return false
+	}
+	match := missingShellRegexp.FindStringSubmatch(msg)
+	return len(match) > 1 && match[1] == shell
+}
 
 func handleContainerNotFoundError(err error) error {
 	match := kubeletContainerNotFoundRegexp.FindStringSubmatch(err.Error())

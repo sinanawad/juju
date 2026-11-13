@@ -35,6 +35,9 @@ import (
 var logger = internallogger.GetLogger("juju.kubernetes.provider.exec")
 
 const (
+	shellSh   = "sh"
+	shellBash = "bash"
+
 	sigkillRetryDelay = 100 * time.Millisecond
 	gracefulKillDelay = 10 * time.Second
 	maxTries          = 10
@@ -148,6 +151,14 @@ type ExecParams struct {
 	ContainerName string
 	WorkingDir    string
 
+	// Interactive starts sh or bash instead of Commands. Exactly one of
+	// Commands or Interactive must be set.
+	Interactive bool
+
+	// LoginShell prefers bash --login for Interactive sessions, falling back
+	// to sh without a login flag.
+	LoginShell bool
+
 	Stdin  io.Reader
 	Stdout io.Writer
 	Stderr io.Writer
@@ -164,13 +175,18 @@ type ExecParams struct {
 type TerminalSize = remotecommand.TerminalSize
 
 // TerminalSizeQueue supplies terminal dimensions to a Kubernetes exec stream.
+// Next must return nil when the session ends, including when it is cancelled.
+// Exec serialises calls to Next across shell attempts.
 type TerminalSizeQueue interface {
 	Next() *TerminalSize
 }
 
 func (ep *ExecParams) validate(ctx context.Context, podGetter typedcorev1.PodInterface) (err error) {
-	if len(ep.Commands) == 0 {
+	if len(ep.Commands) == 0 && !ep.Interactive {
 		return errors.NotValidf("empty commands")
+	}
+	if len(ep.Commands) > 0 && ep.Interactive {
+		return errors.NotValidf("commands with interactive shell")
 	}
 
 	if ep.PodName, ep.ContainerName, err = getValidatedPodContainer(
@@ -213,9 +229,11 @@ func processEnv(env []string) (string, error) {
 	return out.String(), nil
 }
 
-func (c client) safeRun(ctx context.Context, opts ExecParams, executor remotecommand.Executor) (err error) {
+// safeRun uses opts.Stdin for local terminal setup and stdin for streaming,
+// so the replay wrapper does not hide the terminal descriptor.
+func (c client) safeRun(ctx context.Context, opts ExecParams, stdin io.Reader, executor remotecommand.Executor) (err error) {
 	streamOptions := remotecommand.StreamOptions{
-		Stdin:             opts.Stdin,
+		Stdin:             stdin,
 		Stdout:            opts.Stdout,
 		Stderr:            opts.Stderr,
 		Tty:               opts.TTY,
@@ -239,22 +257,41 @@ func (c client) safeRun(ctx context.Context, opts ExecParams, executor remotecom
 	return executor.StreamWithContext(ctx, streamOptions)
 }
 
-func (c client) exec(ctx context.Context, opts ExecParams, cancel <-chan struct{}) (err error) {
-	pidFile := fmt.Sprintf("/tmp/%s.pid", randomString(8, utils.LowerAlpha))
-	cmd := ""
-	if opts.WorkingDir != "" {
-		cmd += fmt.Sprintf("cd %s; ", opts.WorkingDir)
+// exec tries the fallback only when the preferred shell is absent.
+// It returns ErrNoShell if both are absent; other errors propagate.
+func (c client) exec(ctx context.Context, opts ExecParams, cancel <-chan struct{}) error {
+	first, second := preferredShells(opts)
+	stdin := newAttemptStdin(opts.Stdin)
+	sizes := newAttemptSizeQueue(opts.TerminalSizeQueue)
+	defer sizes.stop()
+	opts.TerminalSizeQueue = sizes.next()
+	missing, err := c.execShell(ctx, opts, stdin.next(), cancel, first)
+	if !missing {
+		return err
 	}
-	if len(opts.Env) > 0 {
-		env, err := processEnv(opts.Env)
-		if err != nil {
-			return errors.Trace(err)
-		}
-		cmd += env
+	retryStdin, ok := stdin.retry()
+	if !ok {
+		return errors.Annotatef(err, "cannot retry with %s", second)
 	}
-	cmd += fmt.Sprintf("mkdir -p /tmp; echo $$ > %s; ", pidFile)
-	cmd += fmt.Sprintf("exec sh -c %s; ", shellquote.Join(strings.Join(opts.Commands, " ")))
-	cmdArgs := []string{"sh", "-c", cmd}
+	logger.Debugf(ctx, "%s missing in pod %q container %q, retrying with %s",
+		first, opts.PodName, opts.ContainerName, second)
+	opts.TerminalSizeQueue = sizes.next()
+	missing, err = c.execShell(ctx, opts, retryStdin, cancel, second)
+	if missing {
+		return ErrNoShell
+	}
+	return err
+}
+
+// execShell runs opts with shell and stdin. It returns true only if the
+// primary stream could not find shell. Signal-delivery errors must never
+// cause a running command to be retried.
+func (c client) execShell(ctx context.Context, opts ExecParams, stdin io.Reader, cancel <-chan struct{}, shell string) (bool, error) {
+	pidFile := pidPath(shell, randomString(8, utils.LowerAlpha))
+	cmdArgs, err := commandArgs(shell, pidFile, opts)
+	if err != nil {
+		return false, errors.Trace(err)
+	}
 	logger.Debugf(context.TODO(), "exec on pod %q for cmd %+q", opts.PodName, cmdArgs)
 	req := c.clientset.CoreV1().RESTClient().Post().
 		Resource("pods").
@@ -265,7 +302,7 @@ func (c client) exec(ctx context.Context, opts ExecParams, cancel <-chan struct{
 		VersionedParams(&core.PodExecOptions{
 			Container: opts.ContainerName,
 			Command:   cmdArgs,
-			Stdin:     opts.Stdin != nil,
+			Stdin:     stdin != nil,
 			Stdout:    opts.Stdout != nil,
 			Stderr:    opts.Stderr != nil,
 			TTY:       opts.TTY,
@@ -273,7 +310,7 @@ func (c client) exec(ctx context.Context, opts ExecParams, cancel <-chan struct{
 
 	executor, err := c.remoteCmdExecutorGetter("POST", req.URL())
 	if err != nil {
-		return errors.Trace(err)
+		return false, errors.Trace(err)
 	}
 
 	errChan := make(chan error, 1)
@@ -281,7 +318,7 @@ func (c client) exec(ctx context.Context, opts ExecParams, cancel <-chan struct{
 	streamDone := make(chan struct{})
 	go func() {
 		defer close(streamDone)
-		errChan <- c.safeRun(streamCtx, opts, executor)
+		errChan <- c.safeRun(streamCtx, opts, stdin, executor)
 	}()
 	defer func() {
 		cancelStream()
@@ -289,13 +326,8 @@ func (c client) exec(ctx context.Context, opts ExecParams, cancel <-chan struct{
 	}()
 
 	sendSignal := func(sig syscall.Signal, group bool) error {
-		var cmd []string
-		if group {
-			// Group is mostly for SIGKILL sending a signal to the whole process group.
-			cmd = []string{"sh", "-c", fmt.Sprintf("kill -%d -$(cat %s)", int(sig), pidFile)}
-		} else {
-			cmd = []string{"sh", "-c", fmt.Sprintf("kill -%d $(cat %s)", int(sig), pidFile)}
-		}
+		// Group is mostly for SIGKILL sending a signal to the whole process group.
+		cmd := signalArgs(shell, pidFile, sig, group)
 		req := c.clientset.CoreV1().RESTClient().Post().
 			Resource("pods").
 			Name(opts.PodName).
@@ -334,23 +366,23 @@ func (c client) exec(ctx context.Context, opts ExecParams, cancel <-chan struct{
 	for {
 		select {
 		case err := <-errChan:
-			return errors.Trace(err)
+			return isMissingExecutable(err, shell), errors.Trace(err)
 		case <-cancel:
 			cancel = nil
 			err := sendSignal(syscall.SIGTERM, false)
 			if err != nil {
-				return errors.Annotatef(err, "send signal %d failed", syscall.SIGTERM)
+				return false, errors.Annotatef(err, "send signal %d failed", syscall.SIGTERM)
 			}
 			// Trigger SIGKILL
 			timer = c.clock.After(gracefulKillDelay)
 		case <-kill:
 			killTries++
 			if killTries > maxTries {
-				return errors.Errorf("SIGKILL failed after %d attempts", maxTries)
+				return false, errors.Errorf("SIGKILL failed after %d attempts", maxTries)
 			}
 			err := sendSignal(syscall.SIGKILL, true)
 			if err != nil {
-				return errors.Annotatef(err, "send signal %d failed", syscall.SIGKILL)
+				return false, errors.Annotatef(err, "send signal %d failed", syscall.SIGKILL)
 			}
 			// Retry SIGKILL.
 			timer = c.clock.After(sigkillRetryDelay)
@@ -371,11 +403,73 @@ func (c client) exec(ctx context.Context, opts ExecParams, cancel <-chan struct{
 			} else {
 				err := sendSignal(sig, false)
 				if err != nil {
-					return errors.Annotatef(err, "send signal %d failed", sig)
+					return false, errors.Annotatef(err, "send signal %d failed", sig)
 				}
 			}
 		}
 	}
+}
+
+func preferredShells(opts ExecParams) (first, second string) {
+	if opts.Interactive && opts.LoginShell {
+		return shellBash, shellSh
+	}
+	return shellSh, shellBash
+}
+
+// commandArgs builds a script that records the PID for signal forwarding
+// before execing the command or interactive shell.
+func commandArgs(shell, pidFile string, opts ExecParams) ([]string, error) {
+	cmd := ""
+	if opts.WorkingDir != "" {
+		cmd += fmt.Sprintf("cd %s; ", opts.WorkingDir)
+	}
+	if len(opts.Env) > 0 {
+		env, err := processEnv(opts.Env)
+		if err != nil {
+			return nil, errors.Trace(err)
+		}
+		cmd += env
+	}
+	if shell == shellBash {
+		// Chiselled images can lack mkdir and /tmp; use the /dev/shm
+		// PID path and bash's echo builtin.
+		cmd += fmt.Sprintf("echo $$ > %s; ", pidFile)
+	} else {
+		cmd += fmt.Sprintf("mkdir -p /tmp; echo $$ > %s; ", pidFile)
+	}
+	cmd += innerShellCommand(shell, opts)
+	return []string{shell, "-c", cmd}, nil
+}
+
+func innerShellCommand(shell string, opts ExecParams) string {
+	if opts.Interactive {
+		if shell == shellBash && opts.LoginShell {
+			return "exec bash --login; "
+		}
+		return fmt.Sprintf("exec %s; ", shell)
+	}
+	return fmt.Sprintf("exec %s -c %s; ",
+		shell, shellquote.Join(strings.Join(opts.Commands, " ")))
+}
+
+func pidPath(shell, id string) string {
+	if shell == shellBash {
+		return "/dev/shm/" + id + ".pid"
+	}
+	return "/tmp/" + id + ".pid"
+}
+
+func signalArgs(shell, pidFile string, sig syscall.Signal, group bool) []string {
+	pid := fmt.Sprintf("$(cat %s)", pidFile)
+	if shell == shellBash {
+		// $(<file>) is a bash builtin, so this does not need cat.
+		pid = fmt.Sprintf("$(<%s)", pidFile)
+	}
+	if group {
+		pid = "-" + pid
+	}
+	return []string{shell, "-c", fmt.Sprintf("kill -%d %s", int(sig), pid)}
 }
 
 func parsePodName(podName string) (string, error) {

@@ -5,6 +5,7 @@ package exec_test
 
 import (
 	"io"
+	"reflect"
 	"time"
 
 	"github.com/canonical/gomock/gomock"
@@ -13,6 +14,7 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/remotecommand"
 
 	"github.com/juju/juju/internal/provider/kubernetes/exec"
 	execmocks "github.com/juju/juju/internal/provider/kubernetes/exec/mocks"
@@ -99,6 +101,19 @@ func (s *BaseSuite) setupExecClient(c *tc.C) *gomock.Controller {
 
 func (s *BaseSuite) k8sNotFoundError() *k8serrors.StatusError {
 	return k8serrors.NewNotFound(schema.GroupResource{}, "test")
+}
+
+// streamOptionsLike matches stream options equal to want, except that Stdin
+// only has to be set when want.Stdin is: exec reads input through a wrapper
+// so that a retry can reuse it.
+func streamOptionsLike(want remotecommand.StreamOptions) gomock.Matcher {
+	return gomock.Cond(func(got remotecommand.StreamOptions) bool {
+		return (got.Stdin != nil) == (want.Stdin != nil) &&
+			reflect.DeepEqual(got.Stdout, want.Stdout) &&
+			reflect.DeepEqual(got.Stderr, want.Stderr) &&
+			got.Tty == want.Tty &&
+			got.TerminalSizeQueue == want.TerminalSizeQueue
+	})
 }
 
 func readSize(queue exec.TerminalSizeQueue) <-chan *exec.TerminalSize {
