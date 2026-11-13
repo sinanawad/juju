@@ -90,3 +90,14 @@ func (s *facadeVersionSuite) TestBestFacadeVersionServerUnknown(c *tc.C) {
 		}})
 	c.Check(conn.BestFacadeVersion("TestingAPI"), tc.Equals, 0)
 }
+
+func (s *facadeVersionSuite) TestBestSSHClientVersion(c *tc.C) {
+	// Keep the direct path to 3.6 controllers and the original jump protocol
+	// available alongside the Kubernetes login-shell preference.
+	for _, version := range []int{4, 6, 7} {
+		conn := api.NewTestingConnection(c, api.TestingConnectionParams{
+			FacadeVersions: map[string][]int{"SSHClient": {version}},
+		})
+		c.Check(conn.BestFacadeVersion("SSHClient"), tc.Equals, version)
+	}
+}

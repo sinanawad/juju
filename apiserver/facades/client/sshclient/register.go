@@ -24,6 +24,17 @@ func Register(registry facade.FacadeRegistry) {
 	registry.MustRegister("SSHClient", 6, func(stdCtx context.Context, ctx facade.ModelContext) (facade.Facade, error) {
 		return newFacadeV6(stdCtx, ctx)
 	}, reflect.TypeFor[*FacadeV6]())
+	registry.MustRegister("SSHClient", 7, func(stdCtx context.Context, ctx facade.ModelContext) (facade.Facade, error) {
+		return newFacadeV7(stdCtx, ctx)
+	}, reflect.TypeFor[*FacadeV7]())
+}
+
+func newFacadeV7(stdCtx context.Context, ctx facade.ModelContext) (*FacadeV7, error) {
+	facade, err := newFacadeBase(stdCtx, ctx)
+	if err != nil {
+		return nil, errors.Trace(err)
+	}
+	return &FacadeV7{Facade: facade}, nil
 }
 
 func newFacadeV6(stdCtx context.Context, ctx facade.ModelContext) (*FacadeV6, error) {

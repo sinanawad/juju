@@ -12,6 +12,7 @@ import (
 	"github.com/juju/errors"
 	ssh "github.com/tailscale/gliderssh"
 
+	coressh "github.com/juju/juju/core/ssh"
 	k8sexec "github.com/juju/juju/internal/provider/kubernetes/exec"
 )
 
@@ -81,6 +82,7 @@ func (h *Handlers) SessionHandler(session ssh.Session) {
 		params.Commands = []string{command}
 	} else {
 		params.Interactive = true
+		params.LoginShell = session.User() == coressh.K8sLoginUser
 	}
 	h.metrics.ObserveTimeToSession(session.Context())
 	err = executor.Exec(session.Context(), params, session.Context().Done())

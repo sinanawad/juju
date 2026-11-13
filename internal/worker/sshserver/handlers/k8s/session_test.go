@@ -15,6 +15,7 @@ import (
 	ssh "github.com/tailscale/gliderssh"
 	gossh "golang.org/x/crypto/ssh"
 
+	coressh "github.com/juju/juju/core/ssh"
 	"github.com/juju/juju/core/virtualhostname"
 	"github.com/juju/juju/environs/cloudspec"
 	loggertesting "github.com/juju/juju/internal/logger/testing"
@@ -91,22 +92,26 @@ func (s *k8sSuite) TestSessionHandlerPreservesRawCommand(c *tc.C) {
 
 func (s *k8sSuite) TestSessionHandlerShellIntent(c *tc.C) {
 	for _, container := range []string{"workload", "charm", "api-server"} {
-		for _, pty := range []bool{false, true} {
-			c.Logf("container %q, PTY %t", container, pty)
-			s.testSessionShellIntent(c, container, pty, "")
+		for _, user := range []string{"ubuntu", coressh.K8sLoginUser} {
+			for _, pty := range []bool{false, true} {
+				c.Logf("container %q, user %q, PTY %t", container, user, pty)
+				s.testSessionShellIntent(c, container, user, pty, "")
+			}
 		}
 	}
 }
 
 func (s *k8sSuite) TestSessionHandlerPreservesExplicitShellCommand(c *tc.C) {
-	// Older clients explicitly request bash. Shell selection must not change
+	// Older clients explicitly request bash. Login intent must not change
 	// that request, or any other explicit command.
-	for _, command := range []string{"exec bash --login", "exit 7"} {
-		s.testSessionShellIntent(c, "workload", false, command)
+	for _, user := range []string{"ubuntu", coressh.K8sLoginUser} {
+		for _, command := range []string{"exec bash --login", "exit 7"} {
+			s.testSessionShellIntent(c, "workload", user, false, command)
+		}
 	}
 }
 
-func (s *k8sSuite) testSessionShellIntent(c *tc.C, container string, pty bool, command string) {
+func (s *k8sSuite) testSessionShellIntent(c *tc.C, container, user string, pty bool, command string) {
 	destination, err := virtualhostname.NewInfoContainerTarget("8419cd78-4993-4c3a-928e-c646226beeee", "app/0", container)
 	c.Assert(err, tc.ErrorIsNil)
 
@@ -120,7 +125,7 @@ func (s *k8sSuite) testSessionShellIntent(c *tc.C, container string, pty bool, c
 	c.Assert(err, tc.ErrorIsNil)
 
 	server := startK8sTestServer(c, &ssh.Server{Handler: handlers.SessionHandler})
-	client, err := server.client()
+	client, err := server.clientWithUser(user)
 	c.Assert(err, tc.ErrorIsNil)
 	defer client.Close()
 	session, err := client.NewSession()
@@ -138,7 +143,7 @@ func (s *k8sSuite) testSessionShellIntent(c *tc.C, container string, pty bool, c
 		c.Check(received.Commands, tc.DeepEquals, []string{command})
 	}
 	c.Check(received.Interactive, tc.Equals, command == "")
-	c.Check(received.LoginShell, tc.IsFalse)
+	c.Check(received.LoginShell, tc.Equals, command == "" && user == coressh.K8sLoginUser)
 	c.Check(received.TTY, tc.Equals, pty)
 }
 

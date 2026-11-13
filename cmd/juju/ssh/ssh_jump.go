@@ -34,6 +34,7 @@ import (
 	controllerapi "github.com/juju/juju/api/controller/controller"
 	"github.com/juju/juju/core/model"
 	"github.com/juju/juju/core/network"
+	coressh "github.com/juju/juju/core/ssh"
 	"github.com/juju/juju/internal/filecopy"
 	jujussh "github.com/juju/juju/internal/network/ssh"
 	"github.com/juju/juju/rpc/params"
@@ -53,6 +54,10 @@ const proxyCommandTemplate = `ssh{{if .JumpKey}} -o IdentitiesOnly=yes -i {{.Jum
 // minSSHJumpFacadeVersion is the minimum SSHClient facade version that
 // supports proxying through the controller's SSH jump server.
 const minSSHJumpFacadeVersion = 6
+
+// minSSHLoginFacadeVersion supports selecting a Kubernetes login shell without
+// requiring bash to be installed in the container.
+const minSSHLoginFacadeVersion = 7
 
 // minSSHJumpControllerFacadeVersion is the minimum Controller facade version
 // that serves the SSH jump server host key and port.
@@ -440,11 +445,16 @@ func (p *sshJump) ssh(ctx Context, enablePty bool, target *resolvedTarget) error
 	if err != nil {
 		return err
 	}
-	// Set the default command to a login Bash shell for CAAS models so that
-	// /etc/profile.d/juju-introspection.sh is sourced (for controller units).
 	args := p.args
 	if len(args) == 0 && p.modelType == model.CAAS {
-		args = []string{"exec", "bash", "--login"}
+		if p.sshClient.BestAPIVersion() >= minSSHLoginFacadeVersion {
+			loginTarget := *target
+			loginTarget.user = coressh.K8sLoginUser
+			target = &loginTarget
+		} else {
+			// Older controllers need an explicit login shell to load profiles.
+			args = []string{"exec", "bash", "--login"}
+		}
 	}
 	if p.showCommand {
 		return p.showSSHCommand(ctx.GetStdout(), enablePty, target, args)

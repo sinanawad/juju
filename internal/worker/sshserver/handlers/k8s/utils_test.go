@@ -63,12 +63,17 @@ func startK8sTestServer(c *tc.C, server *ssh.Server) *k8sTestServer {
 }
 
 func (s *k8sTestServer) client() (*gossh.Client, error) {
+	return s.clientWithUser("")
+}
+
+func (s *k8sTestServer) clientWithUser(user string) (*gossh.Client, error) {
 	conn, err := s.listener.Dial()
 	if err != nil {
 		return nil, err
 	}
 	sshConn, channels, requests, err := gossh.NewClientConn(conn, "", &gossh.ClientConfig{
 		HostKeyCallback: gossh.InsecureIgnoreHostKey(),
+		User:            user,
 	})
 	if err != nil {
 		return nil, err

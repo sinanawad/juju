@@ -40,6 +40,12 @@ type Facade struct {
 	controllerTag        names.ControllerTag
 }
 
+// FacadeV7 supports the Kubernetes login-shell preference carried by the
+// terminating SSH username (core/ssh.K8sLoginUser).
+type FacadeV7 struct {
+	*Facade
+}
+
 // FacadeV6 provides the SSH Client API facade version 6
 // which bumps the facade to create a separation between
 // the unfinished work from Juju 3 and the working variant

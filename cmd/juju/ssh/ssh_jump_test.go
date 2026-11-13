@@ -261,6 +261,7 @@ func (s *sshJumpSuite) TestSSHShowsJumpCommand(c *tc.C) {
 }
 
 func (s *sshJumpSuite) TestSSHShowsShellAndPTY(c *tc.C) {
+	defer s.setupMocks(c).Finish()
 	target := &resolvedTarget{
 		user: finalDestinationUser,
 		host: "resolved-target",
@@ -270,35 +271,81 @@ func (s *sshJumpSuite) TestSSHShowsShellAndPTY(c *tc.C) {
 	c.Assert(err, tc.ErrorIsNil)
 
 	for _, modelType := range []model.ModelType{model.IAAS, model.CAAS} {
-		for _, enablePTY := range []bool{false, true} {
-			for _, args := range [][]string{nil, {"echo", "hello world"}, {"-t"}} {
-				jump := sshJump{
-					modelType:         modelType,
-					args:              args,
-					jumpHostPort:      17022,
-					showCommand:       true,
-					sshOutputTemplate: outputTemplate,
-				}
-				ctx := cmdtesting.Context(c)
-				c.Assert(jump.ssh(ctx, enablePTY, target), tc.ErrorIsNil)
+		for _, version := range []int{6, 7, 8} {
+			for _, enablePTY := range []bool{false, true} {
+				for _, args := range [][]string{nil, {"echo", "hello world"}, {"-t"}, {"exec", "bash", "--login"}} {
+					jump := sshJump{
+						modelType:         modelType,
+						args:              args,
+						jumpHostPort:      17022,
+						showCommand:       true,
+						sshOutputTemplate: outputTemplate,
+						sshClient:         s.sshAPIJump,
+					}
+					if modelType == model.CAAS && len(args) == 0 {
+						s.sshAPIJump.EXPECT().BestAPIVersion().Return(version)
+					}
+					ctx := cmdtesting.Context(c)
+					c.Assert(jump.ssh(ctx, enablePTY, target), tc.ErrorIsNil)
 
-				expected := "ssh"
-				if enablePTY {
-					expected += " -t"
-				}
-				expected += ` -o 'ProxyCommand=ssh -W %h:%p -p 17022 fred@1.0.0.1' ubuntu@resolved-target`
-				switch len(args) {
-				case 0:
-					if modelType == model.CAAS {
+					expected := "ssh"
+					if enablePTY {
+						expected += " -t"
+					}
+					expected += ` -o 'ProxyCommand=ssh -W %h:%p -p 17022 fred@1.0.0.1' `
+					if modelType == model.CAAS && len(args) == 0 && version >= 7 {
+						expected += "juju-login@resolved-target"
+					} else {
+						expected += "ubuntu@resolved-target"
+					}
+					switch len(args) {
+					case 0:
+						if modelType == model.CAAS && version < 7 {
+							expected += " exec bash --login"
+						}
+					case 1:
+						expected += " -t"
+					case 2:
+						expected += ` echo "hello world"`
+					case 3:
 						expected += " exec bash --login"
 					}
-				case 1:
-					expected += " -t"
-				case 2:
-					expected += ` echo "hello world"`
+					c.Check(cmdtesting.Stdout(ctx), tc.Equals, expected+"\n")
+					c.Check(target.user, tc.Equals, finalDestinationUser)
+					c.Check(jump.args, tc.DeepEquals, args)
 				}
-				c.Check(cmdtesting.Stdout(ctx), tc.Equals, expected+"\n")
 			}
+		}
+	}
+}
+
+func (s *sshJumpSuite) TestSSHStartsK8sLoginShell(c *tc.C) {
+	defer s.setupMocks(c).Finish()
+	target := &resolvedTarget{
+		user: "custom-user",
+		host: "resolved-target",
+		via:  &resolvedTarget{user: "fred", host: "1.0.0.1"},
+	}
+	for _, version := range []int{6, 7} {
+		for _, enablePTY := range []bool{false, true} {
+			s.sshAPIJump.EXPECT().BestAPIVersion().Return(version)
+			jump := sshJump{
+				modelType:      model.CAAS,
+				jumpHostPort:   17022,
+				knownHostsPath: "/tmp/known_hosts",
+				sshClient:      s.sshAPIJump,
+			}
+			ctx := cmdtesting.Context(c)
+			c.Assert(jump.ssh(ctx, enablePTY, target), tc.ErrorIsNil)
+			c.Check(cmdtesting.Stdout(ctx), tc.Contains, "fred@1.0.0.1")
+			if version < 7 {
+				c.Check(cmdtesting.Stdout(ctx), tc.Contains, "custom-user@resolved-target exec bash --login")
+			} else {
+				c.Check(cmdtesting.Stdout(ctx), tc.Contains, "juju-login@resolved-target")
+				c.Check(cmdtesting.Stdout(ctx), tc.Not(tc.Contains), "exec bash")
+			}
+			c.Check(target.user, tc.Equals, "custom-user")
+			c.Check(jump.args, tc.IsNil)
 		}
 	}
 }
